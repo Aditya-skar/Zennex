@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar, TabType } from './Navbar';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { MembershipModal, getSavedPlan, PLAN_CHANGE_EVENT, PlanType } from './Membership/Membership';
 import ExplorePage from './ExplorePage/ExplorePage';
+import { EVENT_ORGANIZERS } from './ExplorePage/exploreEvents';
 import './Layout.css';
 
 interface Message {
@@ -51,7 +52,8 @@ export const Layout: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [discoverOrganizerId, setDiscoverOrganizerId] = useState<string | null>(null);
+  const discoverOrganizersRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   // Membership states
@@ -90,6 +92,22 @@ export const Layout: React.FC = () => {
       clearInterval(interval);
     };
   }, []);
+
+  const handleViewOrganizerProfile = (organizerId: string) => {
+    setDiscoverOrganizerId(organizerId);
+    setActiveTab('discover');
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'discover' || !discoverOrganizerId) return;
+
+    const scrollTimer = window.setTimeout(() => {
+      const target = document.getElementById(`discover-organizer-${discoverOrganizerId}`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 180);
+
+    return () => window.clearTimeout(scrollTimer);
+  }, [activeTab, discoverOrganizerId]);
 
   // Chat interactive states
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([
@@ -190,7 +208,11 @@ export const Layout: React.FC = () => {
   const activeChat = chatSessions.find((c) => c.id === activeChatId) || chatSessions[0];
 
   return (
-    <div className={`zenex-app-shell ${activeTab === 'explore' ? 'explore-active' : ''}`}>
+    <div
+      className={`zenex-app-shell ${activeTab === 'explore' ? 'explore-active' : ''} ${
+        activeTab === 'home' ? 'home-active' : ''
+      }`}
+    >
       {/* Fixed Header */}
       {activeTab !== 'explore' && (
         <header className="zenex-header">
@@ -388,7 +410,9 @@ export const Layout: React.FC = () => {
         <main className="zenex-main-panel">
           
           {/* EXPLORE PAGE */}
-          {activeTab === 'explore' && <ExplorePage />}
+          {activeTab === 'explore' && (
+            <ExplorePage onViewOrganizerProfile={handleViewOrganizerProfile} />
+          )}
 
           {/* HOME PAGE (EVENT FEED) */}
           {activeTab === 'home' && (
@@ -524,6 +548,43 @@ export const Layout: React.FC = () => {
                     <p>Meet and connect with local organizers, esports matches, running groups and social communities.</p>
                     <button className="discover-action-btn">Meet People</button>
                   </div>
+                </div>
+              </section>
+
+              <section className="discover-organizers-section" ref={discoverOrganizersRef}>
+                <div className="discover-organizers-header">
+                  <h3>Event Organizers</h3>
+                  <p>Tap an organizer from the map to jump to their profile here.</p>
+                </div>
+                <div className="discover-organizers-list">
+                  {EVENT_ORGANIZERS.map((organizer) => (
+                    <article
+                      key={organizer.id}
+                      id={`discover-organizer-${organizer.id}`}
+                      className={`discover-organizer-card glass-card ${
+                        discoverOrganizerId === organizer.id ? 'is-highlighted' : ''
+                      }`}
+                      onClick={() => setDiscoverOrganizerId(organizer.id)}
+                    >
+                      <img
+                        src={organizer.avatar}
+                        alt={organizer.name}
+                        className="discover-organizer-avatar"
+                      />
+                      <div className="discover-organizer-body">
+                        <div className="discover-organizer-top">
+                          <h4>{organizer.name}</h4>
+                          <span className="discover-organizer-role">{organizer.role}</span>
+                        </div>
+                        <span className="discover-organizer-username">@{organizer.username}</span>
+                        <p className="discover-organizer-bio">{organizer.bio}</p>
+                        <div className="discover-organizer-meta">
+                          <span>{organizer.location}</span>
+                          <span>{organizer.eventsHosted} events hosted</span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
                 </div>
               </section>
             </div>

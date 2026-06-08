@@ -745,6 +745,167 @@
   gap: 20px;
 }
 
+/* Home page shell – black & white palette */
+.zenex-app-shell.home-active {
+  --home-bw-fg: #000000;
+  --home-bw-bg: #ffffff;
+  --home-bw-muted: #666666;
+  --home-bw-border: #cccccc;
+  --home-bw-soft: #f7f7f7;
+  --home-bw-card: #ffffff;
+  background: var(--home-bw-bg) !important;
+  color: var(--home-bw-fg) !important;
+}
+
+[data-theme='dark'] .zenex-app-shell.home-active {
+  --home-bw-fg: #ffffff;
+  --home-bw-bg: #000000;
+  --home-bw-muted: #aaaaaa;
+  --home-bw-border: #333333;
+  --home-bw-soft: #111111;
+  --home-bw-card: #0a0a0a;
+}
+
+.home-active .zenex-header {
+  background: var(--home-bw-bg) !important;
+  border-bottom-color: var(--home-bw-border) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.home-active .zenex-app-title {
+  color: var(--home-bw-fg) !important;
+}
+
+.home-active .zenex-app-tagline {
+  color: var(--home-bw-muted) !important;
+}
+
+.home-active .zenex-logo-pill,
+.home-active .sidebar-toggle-btn,
+.home-active .header-action-circle-btn {
+  background: var(--home-bw-soft) !important;
+  border-color: var(--home-bw-border) !important;
+  color: var(--home-bw-fg) !important;
+  box-shadow: none !important;
+}
+
+.home-active .header-logo-img {
+  filter: grayscale(100%) contrast(1.1);
+}
+
+.home-active .bottom-navbar {
+  background: var(--home-bw-bg) !important;
+  border-top-color: var(--home-bw-border) !important;
+  box-shadow: none !important;
+}
+
+.home-active .nav-item {
+  color: var(--home-bw-muted) !important;
+}
+
+.home-active .nav-item.active {
+  color: var(--home-bw-fg) !important;
+}
+
+/* Home page content – black & white theme */
+.home-feed-view .zenex-hero-card,
+.home-feed-view .info-card,
+.home-feed-view .event-card {
+  background: var(--home-bw-card) !important;
+  border: 1px solid var(--home-bw-border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.home-feed-view .hero-chip {
+  background: var(--home-bw-fg) !important;
+  color: var(--home-bw-bg) !important;
+}
+
+.home-feed-view .hero-card-copy h2,
+.home-feed-view .info-card h3,
+.home-feed-view .section-header-row h3,
+.home-feed-view .event-card-title {
+  color: var(--home-bw-fg) !important;
+}
+
+.home-feed-view .hero-card-copy p,
+.home-feed-view .info-card p,
+.home-feed-view .section-header-row span,
+.home-feed-view .event-card-info,
+.home-feed-view .event-card-info span {
+  color: var(--home-bw-muted) !important;
+}
+
+.home-feed-view .hero-card-icon {
+  background: var(--home-bw-soft) !important;
+  color: var(--home-bw-fg) !important;
+  border-color: var(--home-bw-border) !important;
+  box-shadow: none !important;
+}
+
+.home-feed-view .hero-icon-glow {
+  display: none;
+}
+
+.home-feed-view .event-card-image-bg {
+  filter: grayscale(100%) contrast(1.08);
+}
+
+.home-feed-view .event-card-image-placeholder {
+  background: var(--home-bw-soft) !important;
+}
+
+.home-feed-view .event-card-category {
+  background: var(--home-bw-fg) !important;
+  color: var(--home-bw-bg) !important;
+}
+
+.home-feed-view .event-card-avatar {
+  background: #888888 !important;
+  border-color: var(--home-bw-card) !important;
+}
+
+.home-feed-view .event-card-avatar span {
+  color: #ffffff !important;
+}
+
+.home-feed-view .event-card-avatar-count {
+  background: var(--home-bw-fg) !important;
+  color: var(--home-bw-bg) !important;
+}
+
+.home-feed-view .event-card-rsvp {
+  background: var(--home-bw-fg) !important;
+  color: var(--home-bw-bg) !important;
+  border: 1px solid var(--home-bw-fg) !important;
+  box-shadow: none !important;
+}
+
+.home-feed-view .event-card-rsvp:hover {
+  opacity: 0.82;
+  transform: translateY(-1px);
+  background: var(--home-bw-fg) !important;
+}
+
+.home-feed-view .event-card-info svg {
+  color: var(--home-bw-muted) !important;
+}
+
+.home-feed-view .info-card strong {
+  color: var(--home-bw-fg) !important;
+}
+
+.home-feed-view .event-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+[data-theme='dark'] .home-feed-view .event-card:hover {
+  box-shadow: 0 8px 24px rgba(255, 255, 255, 0.06) !important;
+}
+
 /* ---------- Discover View Specifics ---------- */
 .discover-category-scroller {
   display: flex;
@@ -837,6 +998,103 @@
 .card-purple-pink { background: var(--gradient-purple-pink); }
 .card-blue-pink { background: var(--gradient-blue-pink); }
 .card-orange-pink { background: linear-gradient(135deg, #FF8E53 0%, #FF6B6B 100%); }
+
+.discover-organizers-section {
+  margin-top: 28px;
+}
+
+.discover-organizers-header h3 {
+  margin: 0 0 4px;
+  font-size: 1.15rem;
+}
+
+.discover-organizers-header p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.discover-organizers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.discover-organizer-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.discover-organizer-card:hover {
+  transform: translateY(-1px);
+}
+
+.discover-organizer-card.is-highlighted {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.18);
+}
+
+.discover-organizer-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.discover-organizer-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.discover-organizer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.discover-organizer-top h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.discover-organizer-role {
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.discover-organizer-username {
+  font-size: 0.82rem;
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.discover-organizer-bio {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.discover-organizer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
 
 /* ---------- Chat View Layout ---------- */
 .chat-layout-container {

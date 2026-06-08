@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { X, MapPin, Calendar, Clock, FileText, Compass } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES, createEventMapIcon } from './eventMapIcons';
 
-// Custom div icon for pinning on the map
-const pinIcon = L.divIcon({
-  html: `<div class="mini-map-pin">📍</div>`,
-  className: 'custom-div-icon',
-  iconSize: [24, 24],
-  iconAnchor: [12, 24]
-});
+const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-// A component to force leaflet map redraw/resize when modal opens
+function createPinIcon(category: string) {
+  return createEventMapIcon(category, true);
+}
+
 function MapResizeTrigger() {
   const map = useMap();
   useEffect(() => {
@@ -25,16 +24,17 @@ function MapResizeTrigger() {
 interface LocationSelectorProps {
   position: [number, number] | null;
   setPosition: (pos: [number, number]) => void;
+  category: string;
 }
 
-function LocationSelector({ position, setPosition }: LocationSelectorProps) {
+function LocationSelector({ position, setPosition, category }: LocationSelectorProps) {
   useMapEvents({
     click(e) {
       setPosition([e.latlng.lat, e.latlng.lng]);
-    }
+    },
   });
 
-  return position ? <Marker position={position} icon={pinIcon} /> : null;
+  return position ? <Marker position={position} icon={createPinIcon(category)} /> : null;
 }
 
 interface CreateEventModalProps {
@@ -43,8 +43,8 @@ interface CreateEventModalProps {
   onSubmit: (eventData: any) => void;
 }
 
-const SPORTS_CATEGORIES = ['Cricket', 'Football', 'Badminton', 'Running', 'Pickleball'];
-const ENTERTAINMENT_CATEGORIES = ['Music', 'Open Mic', 'Food Events', 'Theatre', 'Movies'];
+const SPORTS_CATEGORIES_LIST = [...SPORTS_CATEGORIES];
+const ENTERTAINMENT_CATEGORIES_LIST = [...ENTERTAINMENT_CATEGORIES];
 
 export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onClose, onSubmit }) => {
   const [eventName, setEventName] = useState('');
@@ -54,14 +54,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
   const [time, setTime] = useState('');
   const [venue, setVenue] = useState('');
   const [description, setDescription] = useState('');
-  const [position, setPosition] = useState<[number, number] | null>([17.3969, 78.4692]); // Default Hyderabad center
+  const [position, setPosition] = useState<[number, number] | null>([17.3969, 78.4692]);
 
-  // Update subcategory default when main category changes
   useEffect(() => {
     if (mainCategory === 'Sports') {
-      setSubCategory(SPORTS_CATEGORIES[0]);
+      setSubCategory(SPORTS_CATEGORIES_LIST[0]);
     } else {
-      setSubCategory(ENTERTAINMENT_CATEGORIES[0]);
+      setSubCategory(ENTERTAINMENT_CATEGORIES_LIST[0]);
     }
   }, [mainCategory]);
 
@@ -74,13 +73,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
       return;
     }
 
-    // Assign appropriate placeholder image based on category
     let image = 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80';
     if (subCategory === 'Cricket') image = 'https://images.unsplash.com/photo-1531415080290-bc98545ab3ef?auto=format&fit=crop&w=600&q=80';
-    else if (subCategory === 'Open Mic') image = 'https://images.unsplash.com/photo-1516280440614-37939bbacd6a?auto=format&fit=crop&w=600&q=80';
-    else if (subCategory === 'Food Events') image = 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=600&q=80';
-    else if (subCategory === 'Music') image = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=600&q=80';
-    else if (subCategory === 'Theatre' || subCategory === 'Movies') image = 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=600&q=80';
+    else if (subCategory === 'Music' || subCategory === 'Clubbing') image = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=600&q=80';
+    else if (subCategory === 'Screening') image = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=600&q=80';
+    else if (subCategory === 'Cosplaying') image = 'https://images.unsplash.com/photo-1535295972055-1c7624482085?auto=format&fit=crop&w=600&q=80';
+    else if (subCategory === 'Basketball') image = 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=600&q=80';
+    else if (subCategory === 'Tennis') image = 'https://images.unsplash.com/photo-1622163642999-958948900c39?auto=format&fit=crop&w=600&q=80';
     else if (subCategory === 'Football') image = 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80';
     else if (subCategory === 'Badminton') image = 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80';
     else if (subCategory === 'Running') image = 'https://images.unsplash.com/photo-1486218119243-13883505764c?auto=format&fit=crop&w=600&q=80';
@@ -94,14 +93,13 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
       date,
       time,
       venue,
-      location: venue, // Keep location field synced with venue for display
+      location: venue,
       description,
       coordinates: position,
       attendees: 1,
-      image
+      image,
     });
 
-    // Reset fields
     setEventName('');
     setMainCategory('Sports');
     setSubCategory('Cricket');
@@ -253,11 +251,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                   style={{ height: '180px', width: '100%', borderRadius: '12px' }}
                   zoomControl={false}
                 >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  />
-                  <LocationSelector position={position} setPosition={setPosition} />
+                  <TileLayer url={OSM_TILE_URL} attribution={OSM_ATTRIBUTION} />
+                  <LocationSelector position={position} setPosition={setPosition} category={subCategory} />
                   <MapResizeTrigger />
                 </MapContainer>
               </div>

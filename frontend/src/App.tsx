@@ -4,6 +4,7 @@ import { ThemeProvider } from './themeContext';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import AuthLayout from './components/auth/AuthLayout';
+import MobileAppFrame from './components/MobileAppFrame/MobileAppFrame';
 import './App.css';
 
 export const App: React.FC = () => {
@@ -29,54 +30,56 @@ export const App: React.FC = () => {
 
   return (
     <ThemeProvider>
-      <Toaster 
-        position="bottom-center" 
-        toastOptions={{
-          style: {
-            background: 'var(--bg-secondary)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '12px',
-            fontFamily: 'var(--font-family)',
-            fontSize: '14px',
-            boxShadow: 'var(--shadow-md)',
-          }
-        }} 
-      />
-      <BrowserRouter>
-        <Routes>
-          <Route 
-            path="/login" 
-            element={
-              isAuthenticated ? (
-                <Navigate to="/" replace />
-              ) : (
-                <AuthLayout />
-              )
-            } 
-          />
-          <Route 
-            path="/signup" 
-            element={
-              isAuthenticated ? (
-                <Navigate to="/" replace />
-              ) : (
-                <AuthLayout />
-              )
-            } 
-          />
-          <Route 
-            path="/*" 
-            element={
-              isAuthenticated ? (
-                <Layout />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            } 
-          />
-        </Routes>
-      </BrowserRouter>
+      <MobileAppFrame>
+        <Toaster 
+          position="bottom-center" 
+          toastOptions={{
+            style: {
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              fontFamily: 'var(--font-family)',
+              fontSize: '14px',
+              boxShadow: 'var(--shadow-md)',
+            }
+          }} 
+        />
+        <BrowserRouter>
+          <Routes>
+            <Route 
+              path="/login" 
+              element={
+                isAuthenticated ? (
+                  <Navigate to="/" replace />
+                ) : (
+                  <AuthLayout />
+                )
+              } 
+            />
+            <Route 
+              path="/signup" 
+              element={
+                isAuthenticated ? (
+                  <Navigate to="/" replace />
+                ) : (
+                  <AuthLayout />
+                )
+              } 
+            />
+            <Route 
+              path="/*" 
+              element={
+                isAuthenticated ? (
+                  <Layout />
+                ) : (
+                  <Navigate to="/login" replace />
+                )
+              } 
+            />
+          </Routes>
+        </BrowserRouter>
+      </MobileAppFrame>
     </ThemeProvider>
   );
 };

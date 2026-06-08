@@ -1,0 +1,134 @@
+/* ====================================================
+   Event Map Pins – 3D glossy badges with icon images
+   ==================================================== */
+
+.custom-marker-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.event-map-pin {
+  position: relative;
+  width: 44px;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.event-map-pin:hover {
+  transform: scale(1.12) translateY(-3px);
+  z-index: 900 !important;
+}
+
+.event-map-pin.selected {
+  transform: scale(1.16) translateY(-4px);
+  z-index: 1000 !important;
+}
+
+.event-pin-head {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  overflow: visible;
+  transition: box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.event-pin-3d-img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  image-rendering: -webkit-optimize-contrast;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.25));
+}
+
+/* Light mode – black disc for all categories */
+.event-pin-head {
+  background: #161618;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.event-pin-ground {
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.38) 0%, transparent 72%);
+}
+
+.event-map-pin.selected .event-pin-head {
+  box-shadow:
+    0 0 0 3px rgba(22, 22, 24, 0.92),
+    0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+.event-pin-pulse {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Dark mode – white disc for all categories */
+[data-theme="dark"] .event-pin-head {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28), 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+[data-theme="dark"] .event-pin-ground {
+  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.3) 0%, transparent 72%);
+}
+
+[data-theme="dark"] .event-map-pin.selected .event-pin-head {
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.92),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .event-pin-pulse {
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.event-pin-ground {
+  width: 22px;
+  height: 6px;
+  margin-top: 2px;
+  border-radius: 50%;
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.event-pin-pulse {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.event-map-pin.selected .event-pin-pulse {
+  animation: eventPinPulse 1.8s ease-out infinite;
+}
+
+@keyframes eventPinPulse {
+  0% {
+    transform: translateX(-50%) scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translateX(-50%) scale(1.65);
+    opacity: 0;
+  }
+}
