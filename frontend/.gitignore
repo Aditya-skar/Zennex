@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+
+# Capacitor native build artifacts (regenerate with npm run cap:sync)
+android/
+ios/
 
 # Editor directories and files
 .vscode/*

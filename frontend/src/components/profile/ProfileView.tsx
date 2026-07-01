@@ -1014,7 +1014,7 @@ export const ProfileView: React.FC = () => {
                   <div className="interests-sub-group">
                     <span className="interests-cat-label">Sports Interests</span>
                     <div className="interests-checkbox-grid">
-                      {['Cricket', 'Football', 'Badminton', 'Running', 'Pickleball', 'Tennis', 'Basketball'].map(sportName => {
+                      {['Cricket', 'Football', 'Badminton', 'Running', 'Pickleball', 'Tennis', 'Basketball', 'Skateboard', 'Swimming'].map(sportName => {
                         const isChecked = tempSports.includes(sportName);
                         return (
                           <label key={sportName} className={`interest-check-chip ${isChecked ? 'active' : ''}`}>

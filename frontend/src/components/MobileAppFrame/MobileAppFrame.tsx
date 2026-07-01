@@ -1,28 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { Signal, Wifi, BatteryFull } from 'lucide-react';
+import { isNativeMobileApp } from '../../mobile/initMobileApp';
 import './MobileAppFrame.css';
 
 interface MobileAppFrameProps {
   children: React.ReactNode;
 }
 
-export const MobileAppFrame: React.FC<MobileAppFrameProps> = ({ children }) => {
-  const [isNativeMobile, setIsNativeMobile] = useState(() =>
-    window.matchMedia('(max-width: 767px)').matches
-  );
+function useMobileShellMode() {
+  const [shellMode, setShellMode] = useState<'native' | 'phone' | 'fullscreen'>(() => {
+    if (isNativeMobileApp()) return 'native';
+    if (window.matchMedia('(max-width: 767px)').matches) return 'fullscreen';
+    return 'phone';
+  });
 
   useEffect(() => {
+    if (isNativeMobileApp()) {
+      setShellMode('native');
+      return;
+    }
+
     const media = window.matchMedia('(max-width: 767px)');
-    const handleChange = (event: MediaQueryListEvent) => {
-      setIsNativeMobile(event.matches);
+    const update = () => {
+      setShellMode(media.matches ? 'fullscreen' : 'phone');
     };
 
-    media.addEventListener('change', handleChange);
-    return () => media.removeEventListener('change', handleChange);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
   }, []);
 
-  if (isNativeMobile) {
-    return <div className="mobile-app-screen mobile-app-mode mobile-fullscreen">{children}</div>;
+  return shellMode;
+}
+
+/** Mobile-only shell: native fullscreen on device, phone frame on desktop browser */
+export const MobileAppFrame: React.FC<MobileAppFrameProps> = ({ children }) => {
+  const shellMode = useMobileShellMode();
+
+  if (shellMode === 'native' || shellMode === 'fullscreen') {
+    return (
+      <div className="mobile-app-screen mobile-app-mode mobile-fullscreen">
+        <div className="mobile-app-content">{children}</div>
+      </div>
+    );
   }
 
   return (
@@ -38,7 +58,9 @@ export const MobileAppFrame: React.FC<MobileAppFrameProps> = ({ children }) => {
           </div>
         </div>
 
-        <div className="mobile-app-screen mobile-app-mode">{children}</div>
+        <div className="mobile-app-screen mobile-app-mode">
+          <div className="mobile-app-content">{children}</div>
+        </div>
 
         <div className="mobile-home-indicator" aria-hidden="true" />
       </div>

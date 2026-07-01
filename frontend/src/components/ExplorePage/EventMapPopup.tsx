@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Clock, MapPin, Navigation, UserPlus, Users } from 'lucide-react';
+import { Calendar, Clock, MapPin, Navigation, UserPlus, Users, Globe, UserLock } from 'lucide-react';
 import type { ExploreEvent } from './exploreEvents';
 import { getEventOrganizer } from './exploreEvents';
 
@@ -17,10 +17,26 @@ export const EventMapPopup: React.FC<EventMapPopupProps> = ({
   onOrganizerClick,
 }) => {
   const organizer = getEventOrganizer(event);
+  const isInviteOnly = event.gameAccess === 'invite';
 
   return (
     <div className="map-popup-card ios-style">
-      <span className="map-popup-tag">{event.category}</span>
+      <div className="map-popup-tags">
+        <span className="map-popup-tag">{event.category}</span>
+        <span className={`map-popup-tag access-tag ${isInviteOnly ? 'invite' : 'public'}`}>
+          {isInviteOnly ? (
+            <>
+              <UserLock size={10} />
+              Invite
+            </>
+          ) : (
+            <>
+              <Globe size={10} />
+              Public
+            </>
+          )}
+        </span>
+      </div>
 
       <div className="map-popup-head">
         <h4 className="map-popup-title">{event.title}</h4>

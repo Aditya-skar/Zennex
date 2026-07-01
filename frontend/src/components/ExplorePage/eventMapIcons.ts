@@ -8,6 +8,8 @@ export const SPORTS_CATEGORIES = [
   'Tennis',
   'Badminton',
   'Running',
+  'Skateboard',
+  'Swimming',
 ] as const;
 
 export const ENTERTAINMENT_CATEGORIES = [
@@ -30,20 +32,25 @@ type PinStyle = {
 };
 
 const ICON_BASE = '/icons/3d';
+// Bump when icon images are replaced so browsers/PWA caches fetch fresh assets.
+const ICON_VERSION = '2';
+const icon = (name: string) => `${ICON_BASE}/${name}.png?v=${ICON_VERSION}`;
 
 const PIN_STYLES: Record<string, PinStyle> = {
-  cricket: { slug: 'cricket', group: 'sports', iconSrc: `${ICON_BASE}/cricket.png` },
-  basketball: { slug: 'basketball', group: 'sports', iconSrc: `${ICON_BASE}/basketball.png` },
-  football: { slug: 'football', group: 'sports', iconSrc: `${ICON_BASE}/football.png` },
-  pickleball: { slug: 'pickleball', group: 'sports', iconSrc: `${ICON_BASE}/pickleball.png` },
-  tennis: { slug: 'tennis', group: 'sports', iconSrc: `${ICON_BASE}/tennis.png` },
-  badminton: { slug: 'badminton', group: 'sports', iconSrc: `${ICON_BASE}/badminton.png` },
-  running: { slug: 'running', group: 'sports', iconSrc: `${ICON_BASE}/running.png` },
-  music: { slug: 'music', group: 'entertainment', iconSrc: `${ICON_BASE}/music.png` },
-  screening: { slug: 'screening', group: 'entertainment', iconSrc: `${ICON_BASE}/screening.png` },
-  clubbing: { slug: 'clubbing', group: 'entertainment', iconSrc: `${ICON_BASE}/clubbing.png` },
-  cosplaying: { slug: 'cosplaying', group: 'entertainment', iconSrc: `${ICON_BASE}/cosplaying.png` },
-  default: { slug: 'default', group: 'sports', iconSrc: `${ICON_BASE}/default.png` },
+  cricket: { slug: 'cricket', group: 'sports', iconSrc: icon('cricket') },
+  basketball: { slug: 'basketball', group: 'sports', iconSrc: icon('basketball') },
+  football: { slug: 'football', group: 'sports', iconSrc: icon('football') },
+  pickleball: { slug: 'pickleball', group: 'sports', iconSrc: icon('pickleball') },
+  tennis: { slug: 'tennis', group: 'sports', iconSrc: icon('tennis') },
+  badminton: { slug: 'badminton', group: 'sports', iconSrc: icon('badminton') },
+  running: { slug: 'running', group: 'sports', iconSrc: icon('running') },
+  skateboard: { slug: 'skateboard', group: 'sports', iconSrc: icon('skateboard') },
+  swimming: { slug: 'swimming', group: 'sports', iconSrc: icon('swimming') },
+  music: { slug: 'music', group: 'entertainment', iconSrc: icon('music') },
+  screening: { slug: 'screening', group: 'entertainment', iconSrc: icon('screening') },
+  clubbing: { slug: 'clubbing', group: 'entertainment', iconSrc: icon('clubbing') },
+  cosplaying: { slug: 'cosplaying', group: 'entertainment', iconSrc: icon('cosplaying') },
+  default: { slug: 'default', group: 'sports', iconSrc: icon('default') },
 };
 
 const CATEGORY_ALIASES: Record<string, keyof typeof PIN_STYLES> = {
@@ -54,6 +61,10 @@ const CATEGORY_ALIASES: Record<string, keyof typeof PIN_STYLES> = {
   tennis: 'tennis',
   badminton: 'badminton',
   running: 'running',
+  skateboard: 'skateboard',
+  skating: 'skateboard',
+  swimming: 'swimming',
+  swim: 'swimming',
   music: 'music',
   dj: 'music',
   'dj events': 'music',
@@ -79,10 +90,18 @@ export function getEventPinStyle(category: string): PinStyle {
   return PIN_STYLES[slug] ?? PIN_STYLES.default;
 }
 
-export function createEventMapPinHtml(category: string, isSelected: boolean): string {
+export function createEventMapPinHtml(
+  category: string,
+  isSelected: boolean,
+  eventCount = 1
+): string {
   const style = getEventPinStyle(category);
   const selectedClass = isSelected ? ' selected' : '';
   const label = category.replace(/"/g, '&quot;');
+  const countBadge =
+    eventCount > 1
+      ? `<span class="event-pin-count" aria-label="${eventCount} events">${eventCount}</span>`
+      : '';
 
   return `
     <div class="event-map-pin event-pin-3d event-pin-${style.group} event-pin-${style.slug}${selectedClass}">
@@ -96,6 +115,7 @@ export function createEventMapPinHtml(category: string, isSelected: boolean): st
           loading="lazy"
           draggable="false"
         />
+        ${countBadge}
       </div>
       <span class="event-pin-ground"></span>
       <span class="event-pin-pulse"></span>
@@ -103,9 +123,13 @@ export function createEventMapPinHtml(category: string, isSelected: boolean): st
   `;
 }
 
-export function createEventMapIcon(category: string, isSelected: boolean): L.DivIcon {
+export function createEventMapIcon(
+  category: string,
+  isSelected: boolean,
+  eventCount = 1
+): L.DivIcon {
   return L.divIcon({
-    html: createEventMapPinHtml(category, isSelected),
+    html: createEventMapPinHtml(category, isSelected, eventCount),
     className: 'custom-marker-icon',
     iconSize: [44, 52],
     iconAnchor: [22, 50],

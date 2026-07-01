@@ -1,0 +1,113 @@
+/* User location – B&W compass dot with pulsing ripples (matches reference layout) */
+
+.user-location-marker-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.user-location-marker {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+}
+
+/* Light mode: black marker, black ripples */
+.user-location-marker--light {
+  --ulm-color: #000000;
+  --ulm-fg: #ffffff;
+  --ulm-ring: rgba(0, 0, 0, 0.14);
+  --ulm-ripple-start: 0.5;
+}
+
+/* Dark mode: white marker, white ripples (vice versa) */
+.user-location-marker--dark {
+  --ulm-color: #ffffff;
+  --ulm-fg: #000000;
+  --ulm-ring: rgba(255, 255, 255, 0.26);
+  --ulm-ripple-start: 0.48;
+}
+
+.user-location-ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  margin: -15px 0 0 -15px;
+  border-radius: 50%;
+  border: 2px solid var(--ulm-color);
+  opacity: 0;
+  animation: user-location-ripple 2.4s ease-out infinite;
+}
+
+.user-location-ripple--2 {
+  animation-delay: 0.8s;
+}
+
+.user-location-ripple--3 {
+  animation-delay: 1.6s;
+}
+
+@keyframes user-location-ripple {
+  0% {
+    transform: scale(var(--ulm-ripple-start));
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+}
+
+.user-location-core {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Thick outer ring like the reference image */
+.user-location-ring {
+  position: relative;
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--ulm-ring);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Solid inner disc */
+.user-location-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ulm-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-location-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--ulm-fg);
+  transform-origin: center center;
+  transition: transform 0.12s ease-out;
+  will-change: transform;
+}
+
+.user-location-arrow svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}

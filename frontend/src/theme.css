@@ -136,7 +136,7 @@
   --transition-theme: 350ms cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Layout */
-  --nav-height: 80px;
+  --nav-height: 88px;
   --header-height: 72px;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);

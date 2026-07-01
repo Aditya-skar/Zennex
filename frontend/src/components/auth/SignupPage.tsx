@@ -31,6 +31,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
     { name: 'Badminton', emoji: '🏸' },
     { name: 'Running', emoji: '🏃' },
     { name: 'Pickleball', emoji: '🏓' },
+    { name: 'Skateboard', emoji: '🛹' },
+    { name: 'Swimming', emoji: '🏊' },
   ];
 
   const entList = [

@@ -9,6 +9,8 @@ export type EventOrganizer = {
   eventsHosted: number;
 };
 
+export type GameAccess = 'public' | 'invite';
+
 export type ExploreEvent = {
   id: string;
   title: string;
@@ -23,6 +25,7 @@ export type ExploreEvent = {
   attendees: number;
   image: string;
   organizerId: string;
+  gameAccess?: GameAccess;
 };
 
 export const EVENT_ORGANIZERS: EventOrganizer[] = [
@@ -149,6 +152,21 @@ export const INITIAL_EVENTS: ExploreEvent[] = [
     organizerId: 'org-arjun',
   },
   {
+    id: 'evt-futsal',
+    title: 'Friday Futsal Pickup',
+    category: 'Football',
+    mainCategory: 'Sports',
+    date: 'Fri, June 12',
+    time: '08:00 PM',
+    venue: 'Madhapur Turf, Hyderabad',
+    location: 'Madhapur Turf, Hyderabad',
+    description: 'Small-sided futsal under the lights. Bring indoor shoes.',
+    coordinates: [17.4485, 78.3912],
+    attendees: 10,
+    image: 'https://images.unsplash.com/photo-1574629810360-7abca99b5a64?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-vikram',
+  },
+  {
     id: 'evt-pickleball',
     title: 'Pickleball Social',
     category: 'Pickleball',
@@ -207,6 +225,36 @@ export const INITIAL_EVENTS: ExploreEvent[] = [
     attendees: 45,
     image: 'https://images.unsplash.com/photo-1486218119243-13883505764c?auto=format&fit=crop&w=600&q=80',
     organizerId: 'org-vikram',
+  },
+  {
+    id: 'evt-skateboard',
+    title: 'Skate Park Session',
+    category: 'Skateboard',
+    mainCategory: 'Sports',
+    date: 'Sun, June 22',
+    time: '05:00 PM',
+    venue: 'Shilparamam Skate Plaza',
+    location: 'Shilparamam Skate Plaza',
+    description: 'Open skate session for all levels. Helmets recommended.',
+    coordinates: [17.4050, 78.4550],
+    attendees: 14,
+    image: 'https://images.unsplash.com/photo-1542770665-66a0b85d33f5?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-vikram',
+  },
+  {
+    id: 'evt-swimming',
+    title: 'Morning Lap Swim',
+    category: 'Swimming',
+    mainCategory: 'Sports',
+    date: 'Mon, June 23',
+    time: '07:00 AM',
+    venue: 'Gachibowli Aquatic Center',
+    location: 'Gachibowli Aquatic Center',
+    description: 'Lane swimming and technique drills. All strokes welcome.',
+    coordinates: [17.3880, 78.4820],
+    attendees: 22,
+    image: 'https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-priya',
   },
   {
     id: 'evt-music',
@@ -287,6 +335,7 @@ export function normalizeExploreEvent(
       number,
     ],
     organizerId: event.organizerId ?? fallback?.organizerId ?? 'org-rahul',
+    gameAccess: event.gameAccess ?? fallback?.gameAccess ?? 'public',
   };
 }
 
@@ -297,10 +346,52 @@ export function loadExploreEvents(): ExploreEvent[] {
   try {
     const parsed = JSON.parse(saved) as Array<Partial<ExploreEvent> & Pick<ExploreEvent, 'id'>>;
     if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_EVENTS;
-    return parsed.map(normalizeExploreEvent);
+    const loaded = parsed.map(normalizeExploreEvent);
+    return mergeSeedEvents(loaded);
   } catch {
     return INITIAL_EVENTS;
   }
+}
+
+export function mergeSeedEvents(loaded: ExploreEvent[]): ExploreEvent[] {
+  const REFRESH_SEED_IDS = new Set(['evt-skateboard', 'evt-swimming']);
+
+  const refreshed = loaded.map((event) =>
+    REFRESH_SEED_IDS.has(event.id) ? normalizeExploreEvent(event) : event
+  );
+
+  const missingSeeds = INITIAL_EVENTS.filter(
+    (seed) => !refreshed.some((event) => event.id === seed.id)
+  );
+
+  return missingSeeds.length > 0 ? [...refreshed, ...missingSeeds] : refreshed;
+}
+
+export type LocationEventGroup = {
+  key: string;
+  coordinates: [number, number];
+  events: ExploreEvent[];
+};
+
+export function locationKeyFromCoordinates(coordinates: [number, number]): string {
+  return `${coordinates[0].toFixed(5)},${coordinates[1].toFixed(5)}`;
+}
+
+export function groupEventsByLocation(events: ExploreEvent[]): LocationEventGroup[] {
+  const grouped = new Map<string, ExploreEvent[]>();
+
+  for (const event of events) {
+    const key = locationKeyFromCoordinates(event.coordinates);
+    const existing = grouped.get(key) ?? [];
+    existing.push(event);
+    grouped.set(key, existing);
+  }
+
+  return Array.from(grouped.entries()).map(([key, groupEvents]) => ({
+    key,
+    coordinates: groupEvents[0].coordinates,
+    events: groupEvents,
+  }));
 }
 
 export function getEventOrganizer(event: Partial<ExploreEvent>): EventOrganizer {

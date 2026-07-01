@@ -1,17 +1,24 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Bell, MapPin, Calendar, Clock, Settings, Sun, Moon, X, ChevronDown } from 'lucide-react';
+import { Search, Bell, MapPin, Calendar, Clock, Settings, Sun, Moon, X, ChevronDown, Plus, LocateFixed } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import { toast } from 'react-hot-toast';
 import 'leaflet/dist/leaflet.css';
 import './ExplorePage.css';
+import './userLocationMarker.css';
 import './eventMapIcons.css';
 import { createEventMapIcon, SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES } from './eventMapIcons';
-import { EventMapPopup } from './EventMapPopup';
+import { LocationMapPopup } from './LocationMapPopup';
+import { CreateEventModal } from './CreateEventModal';
+import { UserLocationMarker } from './UserLocationMarker.tsx';
+import { useUserLocation } from './useUserLocation';
 import {
   INITIAL_EVENTS,
   loadExploreEvents,
+  mergeSeedEvents,
   getEventOrganizer,
+  groupEventsByLocation,
+  locationKeyFromCoordinates,
   type ExploreEvent,
   openEventInGoogleMaps,
 } from './exploreEvents';
@@ -29,18 +36,28 @@ type ExplorePageProps = {
   onViewOrganizerProfile?: (organizerId: string) => void;
 };
 
-function EventMarker({
-  event,
+function LocationMarker({
+  coordinates,
+  category,
+  eventCount,
   isSelected,
+  isPopupOpen,
   onSelect,
   children,
 }: {
-  event: ExploreEvent;
+  coordinates: [number, number];
+  category: string;
+  eventCount: number;
   isSelected: boolean;
+  isPopupOpen: boolean;
   onSelect: () => void;
   children: React.ReactNode;
 }) {
   const markerRef = useRef<L.Marker>(null);
+  const icon = useMemo(
+    () => createEventMapIcon(category, isSelected, eventCount),
+    [category, isSelected, eventCount]
+  );
 
   useEffect(() => {
     if (isSelected) {
@@ -48,12 +65,17 @@ function EventMarker({
     }
   }, [isSelected]);
 
+  const handleMarkerClick = () => {
+    if (isPopupOpen) return;
+    onSelect();
+  };
+
   return (
     <Marker
       ref={markerRef}
-      position={event.coordinates}
-      icon={createEventMapIcon(event.category, isSelected)}
-      eventHandlers={{ click: onSelect }}
+      position={coordinates}
+      icon={icon}
+      eventHandlers={{ click: handleMarkerClick }}
     >
       {children}
     </Marker>
@@ -68,23 +90,60 @@ function MapController({ center, zoom }: { center: [number, number]; zoom: numbe
   return null;
 }
 
+function MapFlyToUser({
+  target,
+  trigger,
+}: {
+  target: { lat: number; lng: number } | null;
+  trigger: number;
+}) {
+  const map = useMap();
+  // Keep the latest position without making it an effect dependency, so live
+  // GPS updates never recenter the map on their own – only an explicit trigger
+  // (first fix or a locate-button tap) does.
+  const targetRef = useRef(target);
+  targetRef.current = target;
+
+  useEffect(() => {
+    if (trigger === 0) return;
+    const current = targetRef.current;
+    if (!current) return;
+    map.flyTo([current.lat, current.lng], Math.max(map.getZoom(), 15), {
+      animate: true,
+      duration: 0.75,
+    });
+  }, [map, trigger]);
+
+  return null;
+}
+
 export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile }) => {
   const { theme, toggleTheme } = useTheme();
+  const { position: userPosition, heading: userHeading, status: userLocationStatus, requestLocation } =
+    useUserLocation();
+  const hasCenteredOnUserRef = useRef(false);
+  const pendingLocateRef = useRef(false);
+  const [flyToUserTrigger, setFlyToUserTrigger] = useState(0);
 
   // Load events
   const [events, setEvents] = useState<ExploreEvent[]>(() => loadExploreEvents());
+
+  useEffect(() => {
+    setEvents((prev) => mergeSeedEvents(prev));
+  }, []);
 
   // Toggles for iOS Floating Panels
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  // Create Event state removed from Explore page
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   // Search filter and query state
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMainCategory, setActiveMainCategory] = useState<'Sports' | 'Entertainment'>('Sports');
   const [activeSubFilter, setActiveSubFilter] = useState<string | null>(null);
   const [isMainDropdownOpen, setIsMainDropdownOpen] = useState(false);
+  const [isSubFilterExpanded, setIsSubFilterExpanded] = useState(false);
   const filterBarRef = useRef<HTMLDivElement>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     const saved = localStorage.getItem('zenex-recent-searches-v3');
@@ -95,6 +154,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const [mapCenter, setMapCenter] = useState<[number, number]>(HYDERABAD_CENTER);
   const [mapZoom, setMapZoom] = useState<number>(11);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [openLocationKey, setOpenLocationKey] = useState<string | null>(null);
 
   // Settings mock toggles
   const [showRadiusBoundary, setShowRadiusBoundary] = useState(false);
@@ -103,6 +163,36 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
 
   // Autofocus ref for search
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!userPosition) return;
+
+    if (!hasCenteredOnUserRef.current) {
+      hasCenteredOnUserRef.current = true;
+      setMapCenter([userPosition.lat, userPosition.lng]);
+      setMapZoom(15);
+      setFlyToUserTrigger(1);
+      return;
+    }
+
+    if (pendingLocateRef.current) {
+      pendingLocateRef.current = false;
+      setMapCenter([userPosition.lat, userPosition.lng]);
+      setMapZoom((prev) => Math.max(prev, 15));
+      setFlyToUserTrigger((n) => n + 1);
+    }
+  }, [userPosition]);
+
+  const handleLocateMe = () => {
+    if (userPosition) {
+      setMapCenter([userPosition.lat, userPosition.lng]);
+      setMapZoom((prev) => Math.max(prev, 15));
+      setFlyToUserTrigger((n) => n + 1);
+    } else {
+      pendingLocateRef.current = true;
+    }
+    requestLocation(true);
+  };
 
   // Focus search input when panel opens
   useEffect(() => {
@@ -182,6 +272,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const handleSelectTrendingEvent = (event: ExploreEvent) => {
     setMapCenter(event.coordinates);
     setMapZoom(14);
+    setOpenLocationKey(locationKeyFromCoordinates(event.coordinates));
     setSelectedEventId(event.id);
     setIsSearchOpen(false);
   };
@@ -203,10 +294,48 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     toast('Open Discover to view organizer profiles', { icon: '👤' });
   };
 
+  const handleCreateEvent = (eventData: Omit<ExploreEvent, 'organizerId'> & { organizerId?: string }) => {
+    const startDate = new Date(`${eventData.date}T${eventData.time}`);
+    const formattedDate = startDate.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formattedTime = startDate.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    const newEvent: ExploreEvent = {
+      ...eventData,
+      title: eventData.title,
+      date: formattedDate,
+      time: formattedTime,
+      organizerId: 'org-me',
+    };
+
+    setEvents((prev) => [...prev, newEvent]);
+    setMapCenter(newEvent.coordinates);
+    setMapZoom(14);
+    setOpenLocationKey(locationKeyFromCoordinates(newEvent.coordinates));
+    setSelectedEventId(newEvent.id);
+    toast.success('Event created!');
+  };
+
   const quickFilterCategories = [...SPORTS_CATEGORIES, ...ENTERTAINMENT_CATEGORIES];
 
   const subFilterOptions =
     activeMainCategory === 'Sports' ? [...SPORTS_CATEGORIES] : [...ENTERTAINMENT_CATEGORIES];
+
+  // Categories tucked behind the "+ More" chip until expanded.
+  const EXTRA_SUB_FILTERS = ['Skateboard', 'Swimming'];
+  const extraSubFilters = subFilterOptions.filter((f) => EXTRA_SUB_FILTERS.includes(f));
+  const hasMoreSubFilters = extraSubFilters.length > 0;
+  const visibleSubFilters =
+    isSubFilterExpanded || !hasMoreSubFilters
+      ? subFilterOptions
+      : subFilterOptions.filter((f) => !EXTRA_SUB_FILTERS.includes(f) || f === activeSubFilter);
 
   const subFilterLabel = (category: string) => {
     if (category === 'Music') return 'Music / DJ';
@@ -217,6 +346,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     setActiveMainCategory(category);
     setActiveSubFilter(null);
     setIsMainDropdownOpen(false);
+    setIsSubFilterExpanded(false);
   };
 
   // Filter events by category + search query
@@ -234,6 +364,11 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
       );
     });
   }, [events, searchQuery, activeMainCategory, activeSubFilter]);
+
+  const locationGroups = useMemo(
+    () => groupEventsByLocation(filteredEvents),
+    [filteredEvents]
+  );
 
   return (
     <div className="explore-container-fullscreen ios-theme">
@@ -263,28 +398,63 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
             />
           )}
 
-          {filteredEvents.map((event) => {
-            const isSelected = selectedEventId === event.id;
+          {locationGroups.map((group) => {
+            const isLocationOpen = openLocationKey === group.key;
+            const hasSelectedEventInGroup = group.events.some((event) => event.id === selectedEventId);
+            const isSelected = isLocationOpen || hasSelectedEventInGroup;
+            const markerCategory = group.events[0].category;
 
             return (
-              <EventMarker
-                key={event.id}
-                event={event}
+              <LocationMarker
+                key={group.key}
+                coordinates={group.coordinates}
+                category={markerCategory}
+                eventCount={group.events.length}
                 isSelected={isSelected}
-                onSelect={() => setSelectedEventId(event.id)}
+                isPopupOpen={isLocationOpen}
+                onSelect={() => {
+                  setOpenLocationKey(group.key);
+                  setSelectedEventId(group.events.length === 1 ? group.events[0].id : null);
+                }}
               >
-                <Popup closeButton={false} minWidth={260} maxWidth={280}>
-                  <EventMapPopup
-                    event={event}
-                    onJoin={() => handleJoinEvent(event)}
-                    onLocation={() => handleOpenLocation(event)}
-                    onOrganizerClick={() => handleOrganizerClick(event)}
+                <Popup
+                  closeButton={false}
+                  minWidth={260}
+                  maxWidth={280}
+                  eventHandlers={{
+                    remove: () => {
+                      if (openLocationKey === group.key) {
+                        setOpenLocationKey(null);
+                        setSelectedEventId(null);
+                      }
+                    },
+                  }}
+                >
+                  <LocationMapPopup
+                    locationKey={group.key}
+                    events={group.events}
+                    isOpen={isLocationOpen}
+                    focusEventId={
+                      selectedEventId &&
+                      group.events.some((event) => event.id === selectedEventId)
+                        ? selectedEventId
+                        : null
+                    }
+                    onDetailEventChange={setSelectedEventId}
+                    onJoin={handleJoinEvent}
+                    onLocation={handleOpenLocation}
+                    onOrganizerClick={handleOrganizerClick}
                   />
                 </Popup>
-              </EventMarker>
+              </LocationMarker>
             );
           })}
 
+          {userPosition && (
+            <UserLocationMarker theme={theme} position={userPosition} heading={userHeading} />
+          )}
+
+          <MapFlyToUser target={userPosition} trigger={flyToUserTrigger} />
           <MapController center={mapCenter} zoom={mapZoom} />
         </MapContainer>
       </div>
@@ -339,7 +509,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
               >
                 All
               </button>
-              {subFilterOptions.map((filter) => (
+              {visibleSubFilters.map((filter) => (
                 <button
                   key={filter}
                   type="button"
@@ -349,13 +519,23 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
                   {subFilterLabel(filter)}
                 </button>
               ))}
+              {hasMoreSubFilters && (
+                <button
+                  type="button"
+                  className="explore-filter-chip explore-filter-chip--more"
+                  onClick={() => setIsSubFilterExpanded((prev) => !prev)}
+                  aria-expanded={isSubFilterExpanded}
+                >
+                  {isSubFilterExpanded ? 'Less' : '+ More'}
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* FLOATING VERTICAL CONTROL BAR */}
-      <div className="vertical-control-pill glass-card animate-scaleIn">
+      <div className="vertical-control-pill animate-scaleIn">
         <button 
           type="button" 
           className="control-pill-btn theme-toggle"
@@ -403,11 +583,33 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
         </button>
       </div>
 
-      {/* Floating Apple Zoom controls */}
-      <div className="ios-zoom-controls">
+      {/* Zennex logo + create event (bottom-left), above nav island */}
+      <div className="explore-map-bottom-left-stack">
+        <div className="explore-map-logo-mark">
+          <img src="/logo.png" alt="ZENEX" />
+        </div>
+        <button
+          type="button"
+          className="explore-map-create-fab"
+          onClick={() => setIsCreateOpen(true)}
+          aria-label="Create event"
+        >
+          <Plus size={22} strokeWidth={2.5} />
+        </button>
+      </div>
+      <div className="ios-zoom-controls explore-map-zoom-controls">
         <button type="button" onClick={() => setMapZoom(prev => Math.min(prev + 1, 18))} aria-label="Zoom In">＋</button>
         <button type="button" onClick={() => setMapZoom(prev => Math.max(prev - 1, 3))} aria-label="Zoom Out">－</button>
       </div>
+      <button
+        type="button"
+        className={`explore-map-locate-btn ${userLocationStatus === 'loading' ? 'is-loading' : ''}`}
+        onClick={handleLocateMe}
+        aria-label="Center map on my location"
+        title="Center map on my location"
+      >
+        <LocateFixed size={20} strokeWidth={2.25} />
+      </button>
 
       {/* EXPANDABLE SEARCH MODAL CARD */}
       {isSearchOpen && (
@@ -664,6 +866,12 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
           </div>
         </>
       )}
+
+      <CreateEventModal
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onSubmit={handleCreateEvent}
+      />
 
     </div>
   );
