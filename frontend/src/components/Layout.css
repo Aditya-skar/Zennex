@@ -768,7 +768,7 @@
 
 .home-active .zenex-header {
   background: var(--home-bw-bg) !important;
-  border-bottom-color: var(--home-bw-border) !important;
+  border-bottom: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -781,13 +781,77 @@
   color: var(--home-bw-muted) !important;
 }
 
-.home-active .zenex-logo-pill,
+/* Home header blends into the page: no boxes, just logo + icons */
+.home-active .zenex-logo-pill {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 .home-active .sidebar-toggle-btn,
 .home-active .header-action-circle-btn {
-  background: var(--home-bw-soft) !important;
-  border-color: var(--home-bw-border) !important;
+  background: transparent !important;
+  border-color: transparent !important;
   color: var(--home-bw-fg) !important;
   box-shadow: none !important;
+}
+
+.home-active .sidebar-toggle-btn:hover,
+.home-active .header-action-circle-btn:hover {
+  background: var(--home-bw-soft) !important;
+}
+
+.home-active .settings-trigger {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--home-bw-fg) !important;
+}
+
+.home-active .settings-trigger:hover,
+.home-active .settings-trigger.active {
+  background: var(--home-bw-soft) !important;
+}
+
+/* Theme toggle row inside the settings dropdown */
+.settings-option--toggle {
+  justify-content: flex-start;
+}
+
+.settings-option--toggle span:not(.settings-toggle-pill) {
+  flex: 1;
+}
+
+.settings-toggle-pill {
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  position: relative;
+  transition: background var(--transition-fast);
+}
+
+.settings-toggle-pill.is-on {
+  background: var(--accent-pink, #7c5cff);
+  border-color: transparent;
+}
+
+.settings-toggle-knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transform: translateY(-50%);
+  transition: left var(--transition-fast);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.settings-toggle-pill.is-on .settings-toggle-knob {
+  left: 19px;
 }
 
 .home-active .header-logo-img {
@@ -1195,6 +1259,21 @@
   background-color: var(--online);
   border: 2px solid var(--bg-card);
   border-radius: 50%;
+}
+
+.session-group-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: #0a84ff;
+  border: 2px solid var(--bg-card);
+  border-radius: 999px;
+  line-height: 1.3;
 }
 
 .session-details {

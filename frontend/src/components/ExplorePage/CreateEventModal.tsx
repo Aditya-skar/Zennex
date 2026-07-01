@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   MapPin,
@@ -10,6 +10,10 @@ import {
   Globe,
   UserLock,
   Loader2,
+  ImagePlus,
+  Film,
+  Users,
+  Timer,
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES, createEventMapIcon } from './eventMapIcons';
@@ -96,6 +100,12 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
   const [locationResults, setLocationResults] = useState<NominatimResult[]>([]);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [showLocationResults, setShowLocationResults] = useState(false);
+  const [media, setMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [limitedSlots, setLimitedSlots] = useState(false);
+  const [slots, setSlots] = useState('10');
+  const [joinCloseDate, setJoinCloseDate] = useState('');
+  const [joinCloseTime, setJoinCloseTime] = useState('');
 
   useEffect(() => {
     if (mainCategory === 'Sports') {
@@ -165,6 +175,57 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     setLocationResults([]);
   };
 
+  const downscaleImage = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1080;
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('no ctx'));
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleMediaChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type.startsWith('image/')) {
+      try {
+        const url = await downscaleImage(file);
+        setMedia({ type: 'image', url });
+      } catch {
+        setMedia({ type: 'image', url: URL.createObjectURL(file) });
+      }
+    } else if (file.type.startsWith('video/')) {
+      setMedia({ type: 'video', url: URL.createObjectURL(file) });
+    }
+    e.target.value = '';
+  };
+
+  const toggleLimitedSlots = () => {
+    setLimitedSlots((prev) => {
+      const next = !prev;
+      // When enabling, default the joining deadline to the event start time.
+      if (next) {
+        if (!joinCloseDate && date) setJoinCloseDate(date);
+        if (!joinCloseTime && time) setJoinCloseTime(time);
+      }
+      return next;
+    });
+  };
+
   const resetForm = () => {
     setEventName('');
     setMainCategory('Sports');
@@ -179,6 +240,11 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     setLocationSearch('');
     setLocationResults([]);
     setShowLocationResults(false);
+    setMedia(null);
+    setLimitedSlots(false);
+    setSlots('10');
+    setJoinCloseDate('');
+    setJoinCloseTime('');
   };
 
   if (!isOpen) return null;
@@ -188,6 +254,17 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     if (!eventName || !venue || !date || !time || !position) {
       alert('Please fill out all required fields and select a location on the map.');
       return;
+    }
+
+    if (limitedSlots) {
+      if (!Number(slots) || Number(slots) < 1) {
+        alert('Enter how many slots are open (at least 1).');
+        return;
+      }
+      if (!joinCloseDate || !joinCloseTime) {
+        alert('Set the date & time when slot joining closes.');
+        return;
+      }
     }
 
     let image = 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80';
@@ -218,6 +295,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
       coordinates: position,
       attendees: 1,
       image,
+      media,
+      registrationType: limitedSlots ? 'limited' : 'open',
+      slotsTotal: limitedSlots ? Number(slots) : undefined,
+      registrationDeadline: limitedSlots ? `${joinCloseDate}T${joinCloseTime}` : undefined,
     });
 
     resetForm();
@@ -378,6 +459,84 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
             </section>
 
             <section className="create-event-section">
+              <h4 className="create-event-section-title">Registration & timer</h4>
+              <button
+                type="button"
+                className={`slots-toggle ${limitedSlots ? 'is-on' : ''}`}
+                onClick={toggleLimitedSlots}
+                aria-pressed={limitedSlots}
+              >
+                <span className="slots-toggle-icon">
+                  <Users size={16} />
+                </span>
+                <span className="slots-toggle-copy">
+                  <strong>Limited slots</strong>
+                  <span>
+                    {limitedSlots
+                      ? 'Capped spots with a joining deadline countdown'
+                      : 'Off — open to join until the event starts'}
+                  </span>
+                </span>
+                <span className="slots-toggle-pill" aria-hidden="true">
+                  <span className="slots-toggle-knob" />
+                </span>
+              </button>
+
+              {limitedSlots ? (
+                <div className="slots-fields">
+                  <div className="form-group">
+                    <label htmlFor="slots">Slots open</label>
+                    <div className="input-with-icon">
+                      <Users size={16} className="input-icon" />
+                      <input
+                        id="slots"
+                        type="number"
+                        min={1}
+                        inputMode="numeric"
+                        placeholder="e.g. 10"
+                        value={slots}
+                        onChange={(e) => setSlots(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row form-row--schedule">
+                    <div className="form-group">
+                      <label htmlFor="joinCloseDate">Joining closes — date</label>
+                      <div className="input-with-icon">
+                        <Calendar size={16} className="input-icon" />
+                        <input
+                          id="joinCloseDate"
+                          type="date"
+                          value={joinCloseDate}
+                          onChange={(e) => setJoinCloseDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="joinCloseTime">Time</label>
+                      <div className="input-with-icon">
+                        <Clock size={16} className="input-icon" />
+                        <input
+                          id="joinCloseTime"
+                          type="time"
+                          value={joinCloseTime}
+                          onChange={(e) => setJoinCloseTime(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="field-hint slots-hint">
+                    <Timer size={13} /> Your post shows a live countdown to this deadline.
+                  </p>
+                </div>
+              ) : (
+                <p className="field-hint slots-hint">
+                  <Timer size={13} /> Your post shows a live countdown to the event start time.
+                </p>
+              )}
+            </section>
+
+            <section className="create-event-section">
               <h4 className="create-event-section-title">More info</h4>
               <div className="form-group">
                 <label htmlFor="description">Description</label>
@@ -385,12 +544,57 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                   <FileText size={16} className="input-icon textarea-icon" />
                   <textarea
                     id="description"
-                    placeholder="Tell people about your event, rules, entry fees (if any)..."
+                    placeholder="This becomes your Home post caption. Tell people about your event..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={4}
                   />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Add photo or video <span className="label-optional">(optional)</span></label>
+                <p className="field-hint">
+                  Posted to Home automatically. Leave empty for a text post.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={handleMediaChange}
+                  hidden
+                />
+
+                {!media ? (
+                  <button
+                    type="button"
+                    className="media-upload-btn"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ImagePlus size={18} />
+                    <span>Upload image or video</span>
+                  </button>
+                ) : (
+                  <div className="media-preview">
+                    {media.type === 'image' ? (
+                      <img src={media.url} alt="Selected media" />
+                    ) : (
+                      <video src={media.url} muted playsInline />
+                    )}
+                    <span className="media-preview-type">
+                      {media.type === 'image' ? <ImagePlus size={13} /> : <Film size={13} />}
+                      {media.type}
+                    </span>
+                    <button
+                      type="button"
+                      className="media-preview-remove"
+                      onClick={() => setMedia(null)}
+                      aria-label="Remove media"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
 

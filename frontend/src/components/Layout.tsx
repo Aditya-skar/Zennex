@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar, TabType } from './Navbar';
-import { ThemeSwitch } from './ThemeSwitch';
+import { useTheme } from '../themeContext';
 import ProfileView from './profile/ProfileView';
-import EventCard from './EventCard/EventCard';
 import PlayerCard from './PlayerCard/PlayerCard';
 import {
   Compass,
@@ -24,10 +23,28 @@ import {
   Send,
   Sparkles,
   ChevronRight,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { MembershipModal, getSavedPlan, PLAN_CHANGE_EVENT, PlanType } from './Membership/Membership';
 import ExplorePage from './ExplorePage/ExplorePage';
 import { EVENT_ORGANIZERS } from './ExplorePage/exploreEvents';
+import HomePostCard from './HomeFeed/HomePostCard';
+import { HOME_FEED_POSTS, type HomeFeedPost } from './HomeFeed/homeFeed';
+import { buildFeed, FEED_CHANGED_EVENT } from './HomeFeed/feedAlgorithm';
+import { CreateEventModal } from './ExplorePage/CreateEventModal';
+import {
+  getEventChats,
+  appendEventChatMessage,
+  EVENT_CHATS_CHANGED_EVENT,
+  type EventGroupChat,
+} from './common/eventChats';
+import {
+  loadUserPosts,
+  publishEvent,
+  USER_POSTS_CHANGED_EVENT,
+  type CreateEventPayload,
+} from './HomeFeed/publishContent';
 import './Layout.css';
 
 interface Message {
@@ -38,21 +55,26 @@ interface Message {
 }
 
 interface ChatSession {
-  id: number;
+  id: number | string;
   name: string;
   avatar: string;
   role: string;
   online: boolean;
   messages: Message[];
+  /** Event id when this is a temporary event group chat. */
+  eventId?: string;
+  isGroup?: boolean;
 }
 
 export const Layout: React.FC = () => {
+  const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [discoverOrganizerId, setDiscoverOrganizerId] = useState<string | null>(null);
+  const [exploreFocus, setExploreFocus] = useState<{ eventId: string; coordinates: [number, number] } | null>(null);
   const discoverOrganizersRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
@@ -96,6 +118,38 @@ export const Layout: React.FC = () => {
   const handleViewOrganizerProfile = (organizerId: string) => {
     setDiscoverOrganizerId(organizerId);
     setActiveTab('discover');
+  };
+
+  const handleViewPostLocation = (post: HomeFeedPost) => {
+    setExploreFocus({ eventId: post.eventId, coordinates: post.coordinates });
+    setActiveTab('explore');
+  };
+
+  // Feed recomputes when follows change, a post is created, or Home re-opens
+  // (so newly-learned dwell/interest affinity is applied between visits).
+  const [feedVersion, setFeedVersion] = useState(0);
+  const [isHomeCreateOpen, setIsHomeCreateOpen] = useState(false);
+  const bumpFeed = () => setFeedVersion((v) => v + 1);
+
+  useEffect(() => {
+    const onFeedChanged = () => bumpFeed();
+    window.addEventListener(FEED_CHANGED_EVENT, onFeedChanged);
+    window.addEventListener(USER_POSTS_CHANGED_EVENT, onFeedChanged);
+    return () => {
+      window.removeEventListener(FEED_CHANGED_EVENT, onFeedChanged);
+      window.removeEventListener(USER_POSTS_CHANGED_EVENT, onFeedChanged);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'home') bumpFeed();
+  }, [activeTab]);
+
+  const feed = useMemo(() => buildFeed([...loadUserPosts(), ...HOME_FEED_POSTS]), [feedVersion]);
+
+  const handleHomeCreateEvent = (eventData: Record<string, unknown>) => {
+    publishEvent(eventData as unknown as CreateEventPayload);
+    bumpFeed();
   };
 
   useEffect(() => {
@@ -145,8 +199,36 @@ export const Layout: React.FC = () => {
       ],
     },
   ]);
-  const [activeChatId, setActiveChatId] = useState<number>(1);
+  const [activeChatId, setActiveChatId] = useState<number | string>(1);
   const [typedMessage, setTypedMessage] = useState('');
+  const [eventChats, setEventChats] = useState<EventGroupChat[]>(() => getEventChats());
+
+  useEffect(() => {
+    const refresh = () => setEventChats(getEventChats());
+    window.addEventListener(EVENT_CHATS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(EVENT_CHATS_CHANGED_EVENT, refresh);
+  }, []);
+
+  // Temporary event group chats (from joins) shown above the regular DMs.
+  const eventChatSessions: ChatSession[] = useMemo(
+    () =>
+      eventChats.map((chat) => ({
+        id: `gc-${chat.eventId}`,
+        eventId: chat.eventId,
+        isGroup: true,
+        name: chat.title,
+        avatar: chat.avatar,
+        role: `Event group · hosted by ${chat.hostName}`,
+        online: true,
+        messages: chat.messages,
+      })),
+    [eventChats],
+  );
+
+  const allChatSessions = useMemo(
+    () => [...eventChatSessions, ...chatSessions],
+    [eventChatSessions, chatSessions],
+  );
 
   // Handle resizing to collapse sidebar on tablet view initially
   useEffect(() => {
@@ -173,7 +255,16 @@ export const Layout: React.FC = () => {
   };
 
   const handleSendMessage = () => {
-    if (!typedMessage.trim()) return;
+    const text = typedMessage.trim();
+    if (!text) return;
+
+    // Event group chats live in the shared store; DMs in local state.
+    const activeGroup = eventChatSessions.find((c) => c.id === activeChatId);
+    if (activeGroup?.eventId) {
+      appendEventChatMessage(activeGroup.eventId, text);
+      setTypedMessage('');
+      return;
+    }
 
     setChatSessions((prev) =>
       prev.map((chat) => {
@@ -187,7 +278,7 @@ export const Layout: React.FC = () => {
               {
                 id: chat.messages.length + 1,
                 sender: 'me',
-                text: typedMessage,
+                text,
                 time: timeString,
               },
             ],
@@ -204,8 +295,9 @@ export const Layout: React.FC = () => {
     alert(`Successfully RSVP'd to: ${eventName}! Added to your events list.`);
   };
 
-  // Get active chat
-  const activeChat = chatSessions.find((c) => c.id === activeChatId) || chatSessions[0];
+  // Get active chat (event group chats first, then DMs)
+  const activeChat =
+    allChatSessions.find((c) => c.id === activeChatId) || allChatSessions[0];
 
   return (
     <div
@@ -237,8 +329,6 @@ export const Layout: React.FC = () => {
           >
             {isSidebarOpen ? <ChevronLeft size={18} /> : <Menu size={18} />}
           </button>
-          
-          <ThemeSwitch />
 
           {/* Quick Notification Bell */}
           <button
@@ -284,6 +374,16 @@ export const Layout: React.FC = () => {
                   <button className="settings-option" onClick={() => { setIsSettingsOpen(false); setActiveTab('profile'); }}>
                     <UserIcon size={16} />
                     <span>Edit Profile</span>
+                  </button>
+                  <button
+                    className="settings-option settings-option--toggle"
+                    onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
+                  >
+                    {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+                    <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
+                    <span className={`settings-toggle-pill ${theme === 'dark' ? 'is-on' : ''}`} aria-hidden="true">
+                      <span className="settings-toggle-knob" />
+                    </span>
                   </button>
                   <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Settings clicked'); }}>
                     <Settings size={16} />
@@ -411,85 +511,67 @@ export const Layout: React.FC = () => {
           
           {/* EXPLORE PAGE */}
           {activeTab === 'explore' && (
-            <ExplorePage onViewOrganizerProfile={handleViewOrganizerProfile} />
+            <ExplorePage
+              onViewOrganizerProfile={handleViewOrganizerProfile}
+              focusTarget={exploreFocus}
+              onFocusHandled={() => setExploreFocus(null)}
+            />
           )}
 
-          {/* HOME PAGE (EVENT FEED) */}
+          {/* HOME PAGE – Instagram-style ranked event feed */}
           {activeTab === 'home' && (
-            <div className="home-feed-view animate-fadeIn">
-              <section className="zenex-hero-card glass-card">
-                <div className="hero-card-copy">
-                  <span className="hero-chip">Featured Events</span>
-                  <h2>Event Feed</h2>
-                  <p>Welcome to ZENEX. Explore upcoming local cricket match tournaments and entertainment activities.</p>
-                </div>
-                <div className="hero-card-icon">
-                  <div className="hero-icon-glow" />
-                  <Home size={36} />
-                </div>
-              </section>
+            <div className="home-feed-view home-feed-view--posts animate-fadeIn">
+              <button
+                type="button"
+                className="home-create-fab"
+                onClick={() => setIsHomeCreateOpen(true)}
+                aria-label="Create post or event"
+              >
+                <Plus size={22} strokeWidth={2.5} />
+              </button>
+              <CreateEventModal
+                isOpen={isHomeCreateOpen}
+                onClose={() => setIsHomeCreateOpen(false)}
+                onSubmit={handleHomeCreateEvent}
+              />
+              {feed.hasFollowing && (
+                <section className="home-feed-block">
+                  <div className="home-feed-section-label">Following</div>
+                  <div className="home-feed-list">
+                    {feed.following.map((post) => (
+                      <HomePostCard
+                        key={post.id}
+                        post={post}
+                        onViewHostProfile={handleViewOrganizerProfile}
+                        onViewAuthorProfile={handleViewOrganizerProfile}
+                        onViewLocation={handleViewPostLocation}
+                        onFollowChange={bumpFeed}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
 
-              {/* Statistics snapshot card */}
-              <section className="zenex-dashboard-grid">
-                <article className="glass-card info-card">
-                  <h3>Activity Snapshot</h3>
-                  <p>Check in for daily interactions, groups, and match highlights in Madhapur.</p>
-                </article>
-                <article className="glass-card info-card">
-                  <h3>Weekly Goal Progress</h3>
-                  <p>Attend 2 more matches to unlock the <strong>Community Builder</strong> Badge!</p>
-                </article>
-              </section>
-
-              {/* Main feed list */}
-              <section className="events-feed-list">
-                <div className="section-header-row">
-                  <h3>Happening in Hyderabad</h3>
-                  <span>Updated 5m ago</span>
-                </div>
-                <div className="events-grid-layout">
-                  <EventCard
-                    title="Sunday Football Match"
-                    category="Football"
-                    date="Sun, June 7"
-                    time="5:00 PM"
-                    location="Madhapur Turf, Hyderabad"
-                    attendees={12}
-                    image="https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=400&h=250&q=80"
-                    onRSVP={() => handleRSVP("Sunday Football Match")}
-                  />
-                  <EventCard
-                    title="Live DJ & Sundowner"
-                    category="Entertainment"
-                    date="Sat, June 20"
-                    time="6:00 PM"
-                    location="Over the Moon, Gachibowli"
-                    attendees={112}
-                    image="https://images.unsplash.com/photo-1516280440614-37939bbacd6a?auto=format&fit=crop&w=400&h=250&q=80"
-                    onRSVP={() => handleRSVP("Live DJ & Sundowner")}
-                  />
-                  <EventCard
-                    title="Cricket Premier Tournament"
-                    category="Cricket"
-                    date="Fri, June 12"
-                    time="9:00 AM"
-                    location="State Ground, Secunderabad"
-                    attendees={22}
-                    image="https://images.unsplash.com/photo-1531415080290-bc98545ab3ef?auto=format&fit=crop&w=400&h=250&q=80"
-                    onRSVP={() => handleRSVP("Cricket Premier Tournament")}
-                  />
-                  <EventCard
-                    title="Standup Open Mic"
-                    category="Arts"
-                    date="Wed, June 15"
-                    time="7:30 PM"
-                    location="The Habitat, Hyderabad"
-                    attendees={45}
-                    image="https://images.unsplash.com/photo-1516280440614-37939bbacd6a?auto=format&fit=crop&w=400&h=250&q=80"
-                    onRSVP={() => handleRSVP("Standup Open Mic")}
-                  />
-                </div>
-              </section>
+              {feed.suggested.length > 0 && (
+                <section className="home-feed-block">
+                  <div className="home-feed-section-label">
+                    {feed.hasFollowing ? 'Suggested for you' : 'For you'}
+                  </div>
+                  <div className="home-feed-list">
+                    {feed.suggested.map(({ post, reason }) => (
+                      <HomePostCard
+                        key={post.id}
+                        post={post}
+                        reason={reason}
+                        onViewHostProfile={handleViewOrganizerProfile}
+                        onViewAuthorProfile={handleViewOrganizerProfile}
+                        onViewLocation={handleViewPostLocation}
+                        onFollowChange={bumpFeed}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
             </div>
           )}
 
@@ -601,7 +683,7 @@ export const Layout: React.FC = () => {
                     <button className="new-chat-btn"><Plus size={16} /></button>
                   </div>
                   <div className="chat-session-scroll">
-                    {chatSessions.map((session) => (
+                    {allChatSessions.map((session) => (
                       <div
                         key={session.id}
                         className={`chat-session-item ${session.id === activeChatId ? 'active' : ''}`}
@@ -610,6 +692,7 @@ export const Layout: React.FC = () => {
                         <div className="session-avatar-wrap">
                           <img src={session.avatar} alt={session.name} className="session-avatar" />
                           {session.online && <span className="session-online-dot" />}
+                          {session.isGroup && <span className="session-group-badge">GC</span>}
                         </div>
                         <div className="session-details">
                           <div className="session-name-row">
@@ -634,7 +717,13 @@ export const Layout: React.FC = () => {
                       <img src={activeChat.avatar} alt={activeChat.name} className="conversation-avatar" />
                       <div>
                         <span className="conversation-name">{activeChat.name}</span>
-                        <span className="conversation-status">{activeChat.online ? 'Online' : 'Offline'}</span>
+                        <span className="conversation-status">
+                          {activeChat.isGroup
+                            ? activeChat.role
+                            : activeChat.online
+                            ? 'Online'
+                            : 'Offline'}
+                        </span>
                       </div>
                     </div>
                   </div>

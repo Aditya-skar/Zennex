@@ -1,10 +1,11 @@
 import React from 'react';
-import { Calendar, Clock, MapPin, Navigation, UserPlus, Users, Globe, UserLock } from 'lucide-react';
+import { Calendar, Clock, MapPin, Navigation, UserPlus, Users, Globe, UserLock, Check } from 'lucide-react';
 import type { ExploreEvent } from './exploreEvents';
 import { getEventOrganizer } from './exploreEvents';
 
 type EventMapPopupProps = {
   event: ExploreEvent;
+  joined?: boolean;
   onJoin: () => void;
   onLocation: () => void;
   onOrganizerClick: () => void;
@@ -12,6 +13,7 @@ type EventMapPopupProps = {
 
 export const EventMapPopup: React.FC<EventMapPopupProps> = ({
   event,
+  joined = false,
   onJoin,
   onLocation,
   onOrganizerClick,
@@ -72,9 +74,13 @@ export const EventMapPopup: React.FC<EventMapPopupProps> = ({
       )}
 
       <div className="map-popup-actions">
-        <button type="button" className="map-popup-btn join-btn" onClick={onJoin}>
-          <UserPlus size={13} />
-          Join Event
+        <button
+          type="button"
+          className={`map-popup-btn join-btn ${joined ? 'is-joined' : ''}`}
+          onClick={onJoin}
+        >
+          {joined ? <Check size={13} /> : <UserPlus size={13} />}
+          {joined ? 'Joined' : 'Join Event'}
         </button>
         <button type="button" className="map-popup-btn location-btn" onClick={onLocation}>
           <Navigation size={13} />

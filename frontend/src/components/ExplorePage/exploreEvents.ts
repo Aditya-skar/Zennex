@@ -105,6 +105,35 @@ export const ORGANIZER_BY_ID = Object.fromEntries(
   EVENT_ORGANIZERS.map((organizer) => [organizer.id, organizer])
 ) as Record<string, EventOrganizer>;
 
+/** Author/organizer id used for anything created by the current signed-in user. */
+export const ME_AUTHOR_ID = 'org-me';
+
+/** Default account applied to the current user until they edit their profile. */
+export const DEFAULT_ME_ACCOUNT = {
+  name: 'Aditya Rao',
+  username: 'aditya.rao',
+  avatar:
+    'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&h=300&q=80',
+  location: 'Hyderabad, India',
+};
+
+/**
+ * The single source of truth for the current user's identity, used consistently
+ * across the Home feed and the Explore map so a created event shows the same host.
+ */
+export function getCurrentUserOrganizer(): EventOrganizer {
+  return {
+    id: ME_AUTHOR_ID,
+    name: localStorage.getItem('zenex-fullname') || DEFAULT_ME_ACCOUNT.name,
+    username: localStorage.getItem('zenex-username') || DEFAULT_ME_ACCOUNT.username,
+    avatar: localStorage.getItem('zenex-avatar') || DEFAULT_ME_ACCOUNT.avatar,
+    role: 'Host · You',
+    bio: '',
+    location: localStorage.getItem('zenex-location') || DEFAULT_ME_ACCOUNT.location,
+    eventsHosted: 0,
+  };
+}
+
 export const INITIAL_EVENTS: ExploreEvent[] = [
   {
     id: 'evt-cricket',
@@ -339,6 +368,16 @@ export function normalizeExploreEvent(
   };
 }
 
+export const EXPLORE_EVENTS_KEY = 'zenex-explore-events-v4';
+export const EXPLORE_EVENTS_CHANGED_EVENT = 'zenex-explore-events-changed';
+
+/** Persist a newly created event so both Explore and Home stay in sync. */
+export function appendExploreEvent(event: ExploreEvent): void {
+  const next = [...loadExploreEvents(), event];
+  localStorage.setItem(EXPLORE_EVENTS_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(EXPLORE_EVENTS_CHANGED_EVENT));
+}
+
 export function loadExploreEvents(): ExploreEvent[] {
   const saved = localStorage.getItem('zenex-explore-events-v4');
   if (!saved) return INITIAL_EVENTS;
@@ -400,6 +439,7 @@ export function getEventOrganizer(event: Partial<ExploreEvent>): EventOrganizer 
     (event.id ? INITIAL_EVENT_BY_ID[event.id]?.organizerId : undefined) ??
     'org-rahul';
 
+  if (organizerId === ME_AUTHOR_ID) return getCurrentUserOrganizer();
   return ORGANIZER_BY_ID[organizerId] ?? EVENT_ORGANIZERS[0];
 }
 

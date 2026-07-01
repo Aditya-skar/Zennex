@@ -13,6 +13,7 @@ type LocationMapPopupProps = {
   onJoin: (event: ExploreEvent) => void;
   onLocation: (event: ExploreEvent) => void;
   onOrganizerClick: (event: ExploreEvent) => void;
+  isJoined?: (event: ExploreEvent) => boolean;
 };
 
 export const LocationMapPopup: React.FC<LocationMapPopupProps> = ({
@@ -24,6 +25,7 @@ export const LocationMapPopup: React.FC<LocationMapPopupProps> = ({
   onJoin,
   onLocation,
   onOrganizerClick,
+  isJoined,
 }) => {
   const [detailEventId, setDetailEventId] = useState<string | null>(() =>
     events.length === 1 ? events[0].id : null
@@ -135,6 +137,7 @@ export const LocationMapPopup: React.FC<LocationMapPopupProps> = ({
       )}
       <EventMapPopup
         event={activeEvent}
+        joined={isJoined?.(activeEvent) ?? false}
         onJoin={() => onJoin(activeEvent)}
         onLocation={() => onLocation(activeEvent)}
         onOrganizerClick={() => onOrganizerClick(activeEvent)}

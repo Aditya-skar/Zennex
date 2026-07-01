@@ -10,6 +10,9 @@ import './eventMapIcons.css';
 import { createEventMapIcon, SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES } from './eventMapIcons';
 import { LocationMapPopup } from './LocationMapPopup';
 import { CreateEventModal } from './CreateEventModal';
+import ConfirmDialog from '../common/ConfirmDialog';
+import { ensureEventChat, removeEventChat } from '../common/eventChats';
+import { UserPlus } from 'lucide-react';
 import { UserLocationMarker } from './UserLocationMarker.tsx';
 import { useUserLocation } from './useUserLocation';
 import {
@@ -22,6 +25,12 @@ import {
   type ExploreEvent,
   openEventInGoogleMaps,
 } from './exploreEvents';
+import {
+  publishEvent,
+  isJoined as isEventJoined,
+  toggleJoin as toggleEventJoin,
+  type CreateEventPayload,
+} from '../HomeFeed/publishContent';
 import { useTheme } from '../../themeContext';
 
 const HYDERABAD_CENTER: [number, number] = [17.3969, 78.4692];
@@ -34,6 +43,8 @@ const OSM_ATTRIBUTION =
 
 type ExplorePageProps = {
   onViewOrganizerProfile?: (organizerId: string) => void;
+  focusTarget?: { eventId: string; coordinates: [number, number] } | null;
+  onFocusHandled?: () => void;
 };
 
 function LocationMarker({
@@ -117,7 +128,7 @@ function MapFlyToUser({
   return null;
 }
 
-export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile }) => {
+export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile, focusTarget, onFocusHandled }) => {
   const { theme, toggleTheme } = useTheme();
   const { position: userPosition, heading: userHeading, status: userLocationStatus, requestLocation } =
     useUserLocation();
@@ -137,6 +148,8 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [joinConfirmEvent, setJoinConfirmEvent] = useState<ExploreEvent | null>(null);
+  const [joinVersion, setJoinVersion] = useState(0);
 
   // Search filter and query state
   const [searchQuery, setSearchQuery] = useState('');
@@ -238,6 +251,22 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     localStorage.setItem('zenex-recent-searches-v3', JSON.stringify(recentSearches));
   }, [recentSearches]);
 
+  // Focus a specific event location (e.g. from a Home feed post's "View location").
+  useEffect(() => {
+    if (!focusTarget) return;
+
+    const target = events.find((e) => e.id === focusTarget.eventId);
+    const coordinates = target?.coordinates ?? focusTarget.coordinates;
+    const key = locationKeyFromCoordinates(coordinates);
+
+    setMapCenter(coordinates);
+    setMapZoom(15);
+    setOpenLocationKey(key);
+    setSelectedEventId(focusTarget.eventId);
+    onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTarget]);
+
   // Handle Search Submission
   const handleSearchSubmit = (term: string) => {
     setSearchQuery(term);
@@ -278,7 +307,34 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   };
 
   const handleJoinEvent = (event: ExploreEvent) => {
-    toast.success(`You joined "${event.title}"!`, { icon: '🎉' });
+    // Already joined → leave directly; otherwise confirm before joining.
+    if (isEventJoined(event.id)) {
+      toggleEventJoin(event.id);
+      removeEventChat(event.id);
+      setJoinVersion((v) => v + 1);
+      toast(`Left "${event.title}"`);
+      return;
+    }
+    setJoinConfirmEvent(event);
+  };
+
+  const confirmJoinEvent = () => {
+    if (joinConfirmEvent) {
+      toggleEventJoin(joinConfirmEvent.id);
+      const organizer = getEventOrganizer(joinConfirmEvent);
+      ensureEventChat({
+        eventId: joinConfirmEvent.id,
+        title: joinConfirmEvent.title,
+        category: joinConfirmEvent.category,
+        avatar: organizer.avatar,
+        hostName: organizer.name,
+      });
+      setJoinVersion((v) => v + 1);
+      toast.success(`You joined "${joinConfirmEvent.title}"! Added to the group chat 💬`, {
+        icon: '🎉',
+      });
+    }
+    setJoinConfirmEvent(null);
   };
 
   const handleOpenLocation = (event: ExploreEvent) => {
@@ -294,33 +350,16 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     toast('Open Discover to view organizer profiles', { icon: '👤' });
   };
 
-  const handleCreateEvent = (eventData: Omit<ExploreEvent, 'organizerId'> & { organizerId?: string }) => {
-    const startDate = new Date(`${eventData.date}T${eventData.time}`);
-    const formattedDate = startDate.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'long',
-      day: 'numeric',
-    });
-    const formattedTime = startDate.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    });
+  const handleCreateEvent = (eventData: Record<string, unknown>) => {
+    // Publishes to BOTH the Explore map and the Home feed (as a post).
+    const { event } = publishEvent(eventData as unknown as CreateEventPayload);
 
-    const newEvent: ExploreEvent = {
-      ...eventData,
-      title: eventData.title,
-      date: formattedDate,
-      time: formattedTime,
-      organizerId: 'org-me',
-    };
-
-    setEvents((prev) => [...prev, newEvent]);
-    setMapCenter(newEvent.coordinates);
+    setEvents(loadExploreEvents());
+    setMapCenter(event.coordinates);
     setMapZoom(14);
-    setOpenLocationKey(locationKeyFromCoordinates(newEvent.coordinates));
-    setSelectedEventId(newEvent.id);
-    toast.success('Event created!');
+    setOpenLocationKey(locationKeyFromCoordinates(event.coordinates));
+    setSelectedEventId(event.id);
+    toast.success('Event created & posted to Home!');
   };
 
   const quickFilterCategories = [...SPORTS_CATEGORIES, ...ENTERTAINMENT_CATEGORIES];
@@ -444,6 +483,10 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
                     onJoin={handleJoinEvent}
                     onLocation={handleOpenLocation}
                     onOrganizerClick={handleOrganizerClick}
+                    isJoined={(event) => {
+                      void joinVersion;
+                      return isEventJoined(event.id);
+                    }}
                   />
                 </Popup>
               </LocationMarker>
@@ -583,11 +626,8 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
         </button>
       </div>
 
-      {/* Zennex logo + create event (bottom-left), above nav island */}
+      {/* Create event (bottom-left), above nav island */}
       <div className="explore-map-bottom-left-stack">
-        <div className="explore-map-logo-mark">
-          <img src="/logo.png" alt="ZENEX" />
-        </div>
         <button
           type="button"
           className="explore-map-create-fab"
@@ -871,6 +911,24 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onSubmit={handleCreateEvent}
+      />
+
+      <ConfirmDialog
+        open={joinConfirmEvent !== null}
+        icon={<UserPlus size={24} />}
+        title="Join this event?"
+        message={
+          joinConfirmEvent ? (
+            <>
+              Confirm your spot for <strong>{joinConfirmEvent.title}</strong> at{' '}
+              {joinConfirmEvent.venue}.
+            </>
+          ) : null
+        }
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
+        onConfirm={confirmJoinEvent}
+        onCancel={() => setJoinConfirmEvent(null)}
       />
 
     </div>
