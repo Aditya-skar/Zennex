@@ -45,7 +45,8 @@
 .zenex-logo-pill {
   width: 42px;
   height: 42px;
-  border-radius: 14px;
+  border-radius: 50%;
+  overflow: hidden;
   background: var(--btn-bg);
   display: flex;
   align-items: center;
@@ -54,6 +55,7 @@
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   transition: transform var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .zenex-logo-pill:hover {
@@ -61,42 +63,42 @@
 }
 
 .header-logo-img {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
 /* Responsive header logo sizing */
 @media (min-width: 768px) and (max-width: 1024px) {
-  .header-logo-img {
-    width: 40px;
-    height: 40px;
+  .zenex-logo-pill {
+    width: 44px;
+    height: 44px;
   }
 }
 
 @media (min-width: 1025px) {
-  .header-logo-img {
+  .zenex-logo-pill {
     width: 48px;
     height: 48px;
   }
 }
 
 .zenex-app-title {
-  font-size: 1.15rem;
-  font-weight: var(--font-weight-bold);
-  color: #343434; /* Light logo text (#343434) */
+  font-family: 'Michroma', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em;
+  color: #343434;
   margin: 0;
+  line-height: 1;
+  user-select: none;
 }
 
 [data-theme="dark"] .zenex-app-title {
   color: #E9DCBE; /* Dark Mode: Cream accent text (#E9DCBE) */
-}
-
-.zenex-app-tagline {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin: 1px 0 0 0;
 }
 
 .zenex-header-actions {
@@ -368,6 +370,27 @@
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
   transition: background var(--transition-theme), border-color var(--transition-theme);
+}
+
+/* Blended hero – flows into the page (no card box), like the home header */
+.zenex-hero-card--blended {
+  padding: 8px 2px 4px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.zenex-hero-card--blended .hero-card-icon {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-secondary);
+}
+
+.zenex-hero-card--blended .hero-icon-glow {
+  display: none;
 }
 
 .hero-chip {
@@ -753,17 +776,48 @@
   --home-bw-border: #cccccc;
   --home-bw-soft: #f7f7f7;
   --home-bw-card: #ffffff;
+  --bg-primary: var(--home-bw-bg);
   background: var(--home-bw-bg) !important;
   color: var(--home-bw-fg) !important;
 }
 
 [data-theme='dark'] .zenex-app-shell.home-active {
   --home-bw-fg: #ffffff;
-  --home-bw-bg: #000000;
+  --home-bw-bg: #0a0a0a;
   --home-bw-muted: #aaaaaa;
-  --home-bw-border: #333333;
-  --home-bw-soft: #111111;
-  --home-bw-card: #0a0a0a;
+  --home-bw-border: #2a2a2a;
+  --home-bw-soft: #141414;
+  --home-bw-card: #111111;
+  --bg-primary: #0a0a0a;
+}
+
+/* Keep feed/discover background unified when ExplorePage sets global --bg-primary to #000 */
+html[data-theme='dark']:has(.zenex-app-shell.home-active) {
+  --bg-primary: #0a0a0a !important;
+}
+
+html[data-theme='light']:has(.zenex-app-shell.home-active) {
+  --bg-primary: #ffffff !important;
+}
+
+/* Home & Discover – one continuous surface; scroll behind floating nav */
+.home-active .zenex-layout-grid {
+  padding-bottom: 0;
+  background: var(--home-bw-bg);
+}
+
+.home-active .zenex-main-panel {
+  background: var(--home-bw-bg);
+  flex: 1;
+  min-height: 0;
+}
+
+.home-active .home-feed-view--posts,
+.home-active .discover-page-view,
+.home-active .profile-page-view {
+  background: var(--home-bw-bg);
+  min-height: 100%;
+  flex-shrink: 0;
 }
 
 .home-active .zenex-header {
@@ -775,10 +829,10 @@
 
 .home-active .zenex-app-title {
   color: var(--home-bw-fg) !important;
-}
-
-.home-active .zenex-app-tagline {
-  color: var(--home-bw-muted) !important;
+  font-family: 'Michroma', sans-serif !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.22em !important;
+  text-indent: 0.22em !important;
 }
 
 /* Home header blends into the page: no boxes, just logo + icons */
@@ -786,6 +840,8 @@
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
 }
 
 .home-active .sidebar-toggle-btn,
@@ -799,6 +855,17 @@
 .home-active .sidebar-toggle-btn:hover,
 .home-active .header-action-circle-btn:hover {
   background: var(--home-bw-soft) !important;
+}
+
+.home-active .chat-create-group-btn {
+  background: var(--home-bw-fg) !important;
+  color: var(--home-bw-bg) !important;
+  border-color: transparent !important;
+}
+
+.home-active .chat-create-group-btn:hover {
+  opacity: 0.88;
+  background: var(--home-bw-fg) !important;
 }
 
 .home-active .settings-trigger {
@@ -978,12 +1045,24 @@
 }
 
 /* ---------- Discover View Specifics ---------- */
+.discover-page-view {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 4px;
+}
+
 .discover-category-scroller {
   display: flex;
+  align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding: 0 0 2px;
+  margin-top: 0;
   scrollbar-width: none;
+  flex-shrink: 0;
+  min-height: fit-content;
 }
 
 .discover-category-scroller::-webkit-scrollbar {
@@ -1167,281 +1246,20 @@
   color: var(--text-muted);
 }
 
-/* ---------- Chat View Layout ---------- */
-.chat-layout-container {
-  display: grid;
-  grid-template-columns: 1fr;
-  height: 600px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-2xl);
-  overflow: hidden;
-  box-shadow: var(--shadow-card);
-}
-
-.chat-session-list {
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid var(--border-color);
-  background: var(--bg-card);
-}
-
-.chat-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.chat-panel-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.new-chat-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--bg-tertiary);
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-primary);
-}
-
-.chat-session-scroll {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-session-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--divider-color);
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.chat-session-item:hover {
-  background: var(--bg-tertiary);
-}
-
-.chat-session-item.active {
-  background: rgba(123, 97, 255, 0.08);
-}
-
-.session-avatar-wrap {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.session-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid var(--border-color);
-}
-
-.session-online-dot {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 11px;
-  height: 11px;
-  background-color: var(--online);
-  border: 2px solid var(--bg-card);
-  border-radius: 50%;
-}
-
-.session-group-badge {
-  position: absolute;
-  bottom: -2px;
-  right: -2px;
-  padding: 1px 5px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: #fff;
-  background: #0a84ff;
-  border: 2px solid var(--bg-card);
-  border-radius: 999px;
-  line-height: 1.3;
-}
-
-.session-details {
+/* ---------- Chat page wrapper ---------- */
+.chat-page-view {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-width: 0;
-}
-
-.session-name-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-
-.session-name {
-  font-size: 14px;
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.session-time {
-  font-size: 10px;
-  color: var(--text-tertiary);
-}
-
-.session-message-preview {
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-conversation-box {
-  display: none; /* hidden on mobile chat list, visible on larger chat screens or active toggle */
-  flex-direction: column;
-  background: var(--bg-secondary);
-}
-
-.conversation-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-card);
-}
-
-.conversation-user-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.conversation-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.conversation-name {
-  font-size: 14px;
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  display: block;
-}
-
-.conversation-status {
-  font-size: 11px;
-  color: var(--online);
-}
-
-.conversation-messages-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.chat-message-bubble {
-  display: flex;
+  min-height: 0;
   width: 100%;
+  overflow: hidden;
 }
 
-.chat-message-bubble.me {
-  justify-content: flex-end;
-}
-
-.chat-message-bubble.other {
-  justify-content: flex-start;
-}
-
-.message-content-box {
-  max-width: 70%;
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
-  position: relative;
-  text-align: left;
-}
-
-.chat-message-bubble.me .message-content-box {
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  border-bottom-right-radius: 4px;
-}
-
-.chat-message-bubble.other .message-content-box {
-  background: var(--bg-card);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-bottom-left-radius: 4px;
-}
-
-.message-text {
-  font-size: var(--font-sm);
-  margin: 0;
-  line-height: 1.5;
-  color: inherit;
-}
-
-.message-time {
-  font-size: 9px;
-  opacity: 0.75;
-  display: block;
-  text-align: right;
-  margin-top: 4px;
-}
-
-.conversation-input-row {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
-  background: var(--bg-card);
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.chat-message-input {
-  flex: 1;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  padding: 12px 20px;
-  outline: none;
-  color: var(--text-primary);
-  font-family: var(--font-family);
-  font-size: var(--font-sm);
-}
-
-.chat-send-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--gradient-purple-blue);
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  box-shadow: 0 4px 10px rgba(0, 122, 255, 0.15);
-  transition: transform var(--transition-fast);
-}
-
-.chat-send-btn:hover {
-  transform: translateY(-1px);
+.home-active .zenex-main-panel:has(.chat-page-view) {
+  overflow: hidden;
+  gap: 0;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
 }
 
 /* ---------- Right Panel styling ---------- */
@@ -1766,7 +1584,16 @@
   .zenex-layout-grid {
     padding-left: 16px;
     padding-right: 16px;
-    padding-bottom: calc(var(--nav-height) + 16px);
+    padding-bottom: 0;
+  }
+
+  .zenex-main-panel {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+    box-sizing: border-box;
+  }
+
+  .explore-active .zenex-main-panel {
+    padding-bottom: 0;
   }
 
   .zenex-sidebar {
@@ -1781,10 +1608,6 @@
    MOBILE APP – lock layout on all screen sizes
    ==================================================== */
 @media (min-width: 768px) {
-  html.zenex-mobile-app .zenex-header {
-    display: flex !important;
-  }
-
   html.zenex-mobile-app .bottom-navbar {
     display: flex !important;
   }
@@ -1820,10 +1643,6 @@
 }
 
 @media (min-width: 1025px) {
-  html.zenex-mobile-app .zenex-header {
-    display: flex !important;
-  }
-
   html.zenex-mobile-app .zenex-layout-grid,
   html.zenex-mobile-app .zenex-layout-grid.sidebar-expanded,
   html.zenex-mobile-app .zenex-layout-grid.sidebar-collapsed {

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar, TabType } from './Navbar';
 import { useTheme } from '../themeContext';
 import ProfileView from './profile/ProfileView';
+import { ME_AUTHOR_ID } from './profile/profileData';
 import PlayerCard from './PlayerCard/PlayerCard';
 import {
   Compass,
@@ -18,27 +19,21 @@ import {
   Bell,
   Menu,
   ChevronLeft,
+  ChevronRight,
   X,
   Plus,
-  Send,
   Sparkles,
-  ChevronRight,
   Sun,
   Moon,
 } from 'lucide-react';
 import { MembershipModal, getSavedPlan, PLAN_CHANGE_EVENT, PlanType } from './Membership/Membership';
 import ExplorePage from './ExplorePage/ExplorePage';
-import { EVENT_ORGANIZERS } from './ExplorePage/exploreEvents';
 import HomePostCard from './HomeFeed/HomePostCard';
 import { HOME_FEED_POSTS, type HomeFeedPost } from './HomeFeed/homeFeed';
 import { buildFeed, FEED_CHANGED_EVENT } from './HomeFeed/feedAlgorithm';
 import { CreateEventModal } from './ExplorePage/CreateEventModal';
-import {
-  getEventChats,
-  appendEventChatMessage,
-  EVENT_CHATS_CHANGED_EVENT,
-  type EventGroupChat,
-} from './common/eventChats';
+import DiscoverPage from './DiscoverFeed/DiscoverPage';
+import ChatPage from './Chat/ChatPage';
 import {
   loadUserPosts,
   publishEvent,
@@ -47,35 +42,15 @@ import {
 } from './HomeFeed/publishContent';
 import './Layout.css';
 
-interface Message {
-  id: number;
-  sender: 'me' | 'other';
-  text: string;
-  time: string;
-}
-
-interface ChatSession {
-  id: number | string;
-  name: string;
-  avatar: string;
-  role: string;
-  online: boolean;
-  messages: Message[];
-  /** Event id when this is a temporary event group chat. */
-  eventId?: string;
-  isGroup?: boolean;
-}
-
 export const Layout: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [discoverOrganizerId, setDiscoverOrganizerId] = useState<string | null>(null);
   const [exploreFocus, setExploreFocus] = useState<{ eventId: string; coordinates: [number, number] } | null>(null);
-  const discoverOrganizersRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   // Membership states
@@ -116,8 +91,13 @@ export const Layout: React.FC = () => {
   }, []);
 
   const handleViewOrganizerProfile = (organizerId: string) => {
-    setDiscoverOrganizerId(organizerId);
-    setActiveTab('discover');
+    setViewingProfileId(organizerId === ME_AUTHOR_ID ? null : organizerId);
+    setActiveTab('profile');
+  };
+
+  const handleTabChange = (tab: TabType) => {
+    if (tab === 'profile') setViewingProfileId(null);
+    setActiveTab(tab);
   };
 
   const handleViewPostLocation = (post: HomeFeedPost) => {
@@ -129,6 +109,7 @@ export const Layout: React.FC = () => {
   // (so newly-learned dwell/interest affinity is applied between visits).
   const [feedVersion, setFeedVersion] = useState(0);
   const [isHomeCreateOpen, setIsHomeCreateOpen] = useState(false);
+  const [chatCreateGroupOpen, setChatCreateGroupOpen] = useState(false);
   const bumpFeed = () => setFeedVersion((v) => v + 1);
 
   useEffect(() => {
@@ -143,6 +124,7 @@ export const Layout: React.FC = () => {
 
   useEffect(() => {
     if (activeTab === 'home') bumpFeed();
+    if (activeTab !== 'chat') setChatCreateGroupOpen(false);
   }, [activeTab]);
 
   const feed = useMemo(() => buildFeed([...loadUserPosts(), ...HOME_FEED_POSTS]), [feedVersion]);
@@ -151,84 +133,6 @@ export const Layout: React.FC = () => {
     publishEvent(eventData as unknown as CreateEventPayload);
     bumpFeed();
   };
-
-  useEffect(() => {
-    if (activeTab !== 'discover' || !discoverOrganizerId) return;
-
-    const scrollTimer = window.setTimeout(() => {
-      const target = document.getElementById(`discover-organizer-${discoverOrganizerId}`);
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 180);
-
-    return () => window.clearTimeout(scrollTimer);
-  }, [activeTab, discoverOrganizerId]);
-
-  // Chat interactive states
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([
-    {
-      id: 1,
-      name: 'Rahul Sharma',
-      avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&h=150&q=80',
-      role: 'Cricket Captain',
-      online: true,
-      messages: [
-        { id: 1, sender: 'other', text: 'Hey, are you down for the cricket match this Sunday?', time: '2:15 PM' },
-        { id: 2, sender: 'me', text: 'Yeah, definitely! What time does it start?', time: '2:18 PM' },
-        { id: 3, sender: 'other', text: 'We start at 9 AM in Gachibowli. See you there!', time: '2:20 PM' },
-      ],
-    },
-    {
-      id: 2,
-      name: 'Neha Reddy',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&h=150&q=80',
-      role: 'Event Host',
-      online: true,
-      messages: [
-        { id: 1, sender: 'other', text: 'Hi! Thanks for attending the open mic night!', time: 'Yesterday' },
-        { id: 2, sender: 'me', text: 'It was amazing! The performances were great.', time: 'Yesterday' },
-      ],
-    },
-    {
-      id: 3,
-      name: 'Aisha Khan',
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&h=150&q=80',
-      role: 'Fitness Trainer',
-      online: false,
-      messages: [
-        { id: 1, sender: 'other', text: 'Group yoga session is scheduled for Saturday morning.', time: '2 days ago' },
-      ],
-    },
-  ]);
-  const [activeChatId, setActiveChatId] = useState<number | string>(1);
-  const [typedMessage, setTypedMessage] = useState('');
-  const [eventChats, setEventChats] = useState<EventGroupChat[]>(() => getEventChats());
-
-  useEffect(() => {
-    const refresh = () => setEventChats(getEventChats());
-    window.addEventListener(EVENT_CHATS_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(EVENT_CHATS_CHANGED_EVENT, refresh);
-  }, []);
-
-  // Temporary event group chats (from joins) shown above the regular DMs.
-  const eventChatSessions: ChatSession[] = useMemo(
-    () =>
-      eventChats.map((chat) => ({
-        id: `gc-${chat.eventId}`,
-        eventId: chat.eventId,
-        isGroup: true,
-        name: chat.title,
-        avatar: chat.avatar,
-        role: `Event group · hosted by ${chat.hostName}`,
-        online: true,
-        messages: chat.messages,
-      })),
-    [eventChats],
-  );
-
-  const allChatSessions = useMemo(
-    () => [...eventChatSessions, ...chatSessions],
-    [eventChatSessions, chatSessions],
-  );
 
   // Handle resizing to collapse sidebar on tablet view initially
   useEffect(() => {
@@ -254,164 +158,133 @@ export const Layout: React.FC = () => {
     setIsSidebarOpen((prev) => !prev);
   };
 
-  const handleSendMessage = () => {
-    const text = typedMessage.trim();
-    if (!text) return;
-
-    // Event group chats live in the shared store; DMs in local state.
-    const activeGroup = eventChatSessions.find((c) => c.id === activeChatId);
-    if (activeGroup?.eventId) {
-      appendEventChatMessage(activeGroup.eventId, text);
-      setTypedMessage('');
-      return;
-    }
-
-    setChatSessions((prev) =>
-      prev.map((chat) => {
-        if (chat.id === activeChatId) {
-          const now = new Date();
-          const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          return {
-            ...chat,
-            messages: [
-              ...chat.messages,
-              {
-                id: chat.messages.length + 1,
-                sender: 'me',
-                text,
-                time: timeString,
-              },
-            ],
-          };
-        }
-        return chat;
-      })
-    );
-    setTypedMessage('');
-  };
-
   // Mock RSVP Handler
   const handleRSVP = (eventName: string) => {
     alert(`Successfully RSVP'd to: ${eventName}! Added to your events list.`);
   };
 
-  // Get active chat (event group chats first, then DMs)
-  const activeChat =
-    allChatSessions.find((c) => c.id === activeChatId) || allChatSessions[0];
-
   return (
     <div
       className={`zenex-app-shell ${activeTab === 'explore' ? 'explore-active' : ''} ${
-        activeTab === 'home' ? 'home-active' : ''
+        activeTab === 'home' || activeTab === 'discover' || activeTab === 'chat' || activeTab === 'profile'
+          ? 'home-active'
+          : ''
       }`}
     >
-      {/* Fixed Header */}
-      {activeTab !== 'explore' && (
+      {/* Fixed Header — hidden on Profile and Explore */}
+      {activeTab !== 'explore' && activeTab !== 'profile' && (
         <header className="zenex-header">
-        <div className="zenex-brand-group">
-          {/* Logo element clickable to reset to home */}
-          <div className="zenex-logo-pill" onClick={() => setActiveTab('home')} style={{ cursor: 'pointer' }}>
-            <img src="/logo.png" alt="ZENEX" className="header-logo-img" />
+          <div className="zenex-brand-group">
+            <div className="zenex-logo-pill" onClick={() => handleTabChange('home')} style={{ cursor: 'pointer' }}>
+              <img src="/logo.png" alt="SIMSOR" className="header-logo-img" />
+            </div>
+            <div>
+              <p className="zenex-app-title" onClick={() => handleTabChange('home')} style={{ cursor: 'pointer' }}>SIMSOR</p>
+            </div>
           </div>
-          <div>
-            <p className="zenex-app-title" onClick={() => setActiveTab('home')} style={{ cursor: 'pointer' }}>ZENEX</p>
-            <p className="zenex-app-tagline">Connect. Play. Experience.</p>
-          </div>
-        </div>
 
-        <div className="zenex-header-actions">
-          {/* Collapsible Sidebar Button (visible on tablet and desktop) */}
-          <button
-            type="button"
-            className="sidebar-toggle-btn"
-            onClick={handleSidebarToggle}
-            aria-label="Toggle sidebar"
-          >
-            {isSidebarOpen ? <ChevronLeft size={18} /> : <Menu size={18} />}
-          </button>
-
-          {/* Quick Notification Bell */}
-          <button
-            type="button"
-            className="header-action-circle-btn notifications-bell-btn"
-            onClick={() => setIsNotificationsOpen(true)}
-            aria-label="Notifications"
-          >
-            <Bell size={20} />
-            <span className="red-badge-dot">3</span>
-          </button>
-
-          {/* Settings Trigger */}
-          <div className="settings-menu-container">
+          <div className="zenex-header-actions">
             <button
-              className={`settings-trigger ${isSettingsOpen ? 'active' : ''}`}
-              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-              aria-label="Settings"
+              type="button"
+              className="sidebar-toggle-btn"
+              onClick={handleSidebarToggle}
+              aria-label="Toggle sidebar"
             >
-              <Settings size={20} />
+              {isSidebarOpen ? <ChevronLeft size={18} /> : <Menu size={18} />}
             </button>
-            {isSettingsOpen && (
-              <>
-                <div className="settings-backdrop" onClick={() => setIsSettingsOpen(false)} />
-                <div className="settings-dropdown animate-scaleIn">
-                  {/* Premium subscription bar */}
-                  <div 
-                    className={`settings-premium-bar plan-${membershipPlan.toLowerCase()}`} 
-                    onClick={() => { setIsSettingsOpen(false); setIsMembershipOpen(true); }}
-                  >
-                    <Sparkles size={14} className="premium-bar-icon" />
-                    <div className="premium-bar-content">
-                      <span className="premium-bar-title">
-                        {membershipPlan === 'FREE' ? 'Zenex Gold / Silver' : `Zenex ${membershipPlan}`}
-                      </span>
-                      <span className="premium-bar-subtitle">
-                        {membershipPlan === 'FREE' ? 'Upgrade to Premium' : 'Manage Subscription'}
-                      </span>
-                    </div>
-                    <ChevronRight size={12} className="premium-bar-arrow" />
-                  </div>
 
-                  <button className="settings-option" onClick={() => { setIsSettingsOpen(false); setActiveTab('profile'); }}>
-                    <UserIcon size={16} />
-                    <span>Edit Profile</span>
-                  </button>
+            {activeTab === 'chat' ? (
+              <button
+                type="button"
+                className="header-action-circle-btn chat-create-group-btn"
+                onClick={() => setChatCreateGroupOpen(true)}
+                aria-label="Create group chat"
+              >
+                <Plus size={22} strokeWidth={2.5} />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="header-action-circle-btn notifications-bell-btn"
+                  onClick={() => setIsNotificationsOpen(true)}
+                  aria-label="Notifications"
+                >
+                  <Bell size={20} />
+                  <span className="red-badge-dot">3</span>
+                </button>
+
+                <div className="settings-menu-container">
                   <button
-                    className="settings-option settings-option--toggle"
-                    onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
+                    className={`settings-trigger ${isSettingsOpen ? 'active' : ''}`}
+                    onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                    aria-label="Settings"
                   >
-                    {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
-                    <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
-                    <span className={`settings-toggle-pill ${theme === 'dark' ? 'is-on' : ''}`} aria-hidden="true">
-                      <span className="settings-toggle-knob" />
-                    </span>
+                    <Settings size={20} />
                   </button>
-                  <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Settings clicked'); }}>
-                    <Settings size={16} />
-                    <span>Settings</span>
-                  </button>
-                  <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Privacy clicked'); }}>
-                    <Lock size={16} />
-                    <span>Privacy</span>
-                  </button>
-                  <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Help & Support clicked'); }}>
-                    <HelpCircle size={16} />
-                    <span>Help & Support</span>
-                  </button>
-                  <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('About Zenex clicked'); }}>
-                    <Info size={16} />
-                    <span>About Zenex</span>
-                  </button>
-                  <div className="settings-dropdown-divider" />
-                  <button className="settings-option logout-option" onClick={handleLogout}>
-                    <LogOut size={16} />
-                    <span>Logout</span>
-                  </button>
+                  {isSettingsOpen && (
+                    <>
+                      <div className="settings-backdrop" onClick={() => setIsSettingsOpen(false)} />
+                      <div className="settings-dropdown animate-scaleIn">
+                        <div
+                          className={`settings-premium-bar plan-${membershipPlan.toLowerCase()}`}
+                          onClick={() => { setIsSettingsOpen(false); setIsMembershipOpen(true); }}
+                        >
+                          <Sparkles size={14} className="premium-bar-icon" />
+                          <div className="premium-bar-content">
+                            <span className="premium-bar-title">
+                              {membershipPlan === 'FREE' ? 'Zenex Gold / Silver' : `Zenex ${membershipPlan}`}
+                            </span>
+                            <span className="premium-bar-subtitle">
+                              {membershipPlan === 'FREE' ? 'Upgrade to Premium' : 'Manage Subscription'}
+                            </span>
+                          </div>
+                          <ChevronRight size={12} className="premium-bar-arrow" />
+                        </div>
+
+                        <button className="settings-option" onClick={() => { setIsSettingsOpen(false); handleTabChange('profile'); }}>
+                          <UserIcon size={16} />
+                          <span>Edit Profile</span>
+                        </button>
+                        <button
+                          className="settings-option settings-option--toggle"
+                          onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
+                        >
+                          {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+                          <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
+                          <span className={`settings-toggle-pill ${theme === 'dark' ? 'is-on' : ''}`} aria-hidden="true">
+                            <span className="settings-toggle-knob" />
+                          </span>
+                        </button>
+                        <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Settings clicked'); }}>
+                          <Settings size={16} />
+                          <span>Settings</span>
+                        </button>
+                        <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Privacy clicked'); }}>
+                          <Lock size={16} />
+                          <span>Privacy</span>
+                        </button>
+                        <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('Help & Support clicked'); }}>
+                          <HelpCircle size={16} />
+                          <span>Help & Support</span>
+                        </button>
+                        <button className="settings-option" onClick={() => { setIsSettingsOpen(false); alert('About Zenex clicked'); }}>
+                          <Info size={16} />
+                          <span>About Zenex</span>
+                        </button>
+                        <div className="settings-dropdown-divider" />
+                        <button className="settings-option logout-option" onClick={handleLogout}>
+                          <LogOut size={16} />
+                          <span>Logout</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </>
             )}
           </div>
-        </div>
-      </header>
+        </header>
       )}
 
       {/* Main Responsive Grid Layout */}
@@ -491,7 +364,7 @@ export const Layout: React.FC = () => {
 
               <button
                 className="sidebar-nav-item"
-                onClick={() => setIsSettingsOpen(true)}
+                onClick={() => setActiveTab('profile')}
                 aria-label="Settings"
               >
                 <Settings size={18} />
@@ -536,7 +409,7 @@ export const Layout: React.FC = () => {
               />
               {feed.hasFollowing && (
                 <section className="home-feed-block">
-                  <div className="home-feed-section-label">Following</div>
+                  <div className="home-feed-section-label">Boosting</div>
                   <div className="home-feed-list">
                     {feed.following.map((post) => (
                       <HomePostCard
@@ -546,6 +419,7 @@ export const Layout: React.FC = () => {
                         onViewAuthorProfile={handleViewOrganizerProfile}
                         onViewLocation={handleViewPostLocation}
                         onFollowChange={bumpFeed}
+                        onPostDeleted={bumpFeed}
                       />
                     ))}
                   </div>
@@ -567,6 +441,7 @@ export const Layout: React.FC = () => {
                         onViewAuthorProfile={handleViewOrganizerProfile}
                         onViewLocation={handleViewPostLocation}
                         onFollowChange={bumpFeed}
+                        onPostDeleted={bumpFeed}
                       />
                     ))}
                   </div>
@@ -577,196 +452,35 @@ export const Layout: React.FC = () => {
 
           {/* DISCOVER FEED */}
           {activeTab === 'discover' && (
-            <div className="discover-page-view animate-fadeIn">
-              <section className="zenex-hero-card glass-card">
-                <div className="hero-card-copy">
-                  <span className="hero-chip">Find & Match Activities</span>
-                  <h2>Discover Feed</h2>
-                  <p>Explore the full poster grid of sports, arts, music, wellness and competitive matches.</p>
-                </div>
-                <div className="hero-card-icon">
-                  <div className="hero-icon-glow" />
-                  <Search size={36} />
-                </div>
-              </section>
-
-              {/* Interactive Category Tabs scroll */}
-              <div className="discover-category-scroller">
-                {['All', 'Sports', 'Entertainment', 'Arts', 'Fitness', 'Wellness'].map((cat) => (
-                  <button
-                    key={cat}
-                    className={`discover-category-chip ${activeCategory === cat ? 'active' : ''}`}
-                    onClick={() => setActiveCategory(cat)}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-
-              {/* Grid of poster activity categories */}
-              <section className="discover-grid-section">
-                <h3>Explore Hubs</h3>
-                <div className="discover-grid-layout">
-                  <div className="discover-gradient-card card-purple-blue">
-                    <h4>Sports Tournaments</h4>
-                    <p>Find local tournaments, matches and leagues. Join team lineups or create customized challenges.</p>
-                    <button className="discover-action-btn">Browse Matches</button>
-                  </div>
-
-                  <div className="discover-gradient-card card-purple-pink">
-                    <h4>Performing Arts</h4>
-                    <p>Immerse in local standup comedy showcases, music nights, poetry slams and indie acoustic sets.</p>
-                    <button className="discover-action-btn">Find Stages</button>
-                  </div>
-
-                  <div className="discover-gradient-card card-blue-pink">
-                    <h4>Wellness Sessions</h4>
-                    <p>Connect with local fitness trainers, yoga sessions, runs, and healthy lifestyle clubs.</p>
-                    <button className="discover-action-btn">Book Sessions</button>
-                  </div>
-
-                  <div className="discover-gradient-card card-orange-pink">
-                    <h4>Community Hangouts</h4>
-                    <p>Meet and connect with local organizers, esports matches, running groups and social communities.</p>
-                    <button className="discover-action-btn">Meet People</button>
-                  </div>
-                </div>
-              </section>
-
-              <section className="discover-organizers-section" ref={discoverOrganizersRef}>
-                <div className="discover-organizers-header">
-                  <h3>Event Organizers</h3>
-                  <p>Tap an organizer from the map to jump to their profile here.</p>
-                </div>
-                <div className="discover-organizers-list">
-                  {EVENT_ORGANIZERS.map((organizer) => (
-                    <article
-                      key={organizer.id}
-                      id={`discover-organizer-${organizer.id}`}
-                      className={`discover-organizer-card glass-card ${
-                        discoverOrganizerId === organizer.id ? 'is-highlighted' : ''
-                      }`}
-                      onClick={() => setDiscoverOrganizerId(organizer.id)}
-                    >
-                      <img
-                        src={organizer.avatar}
-                        alt={organizer.name}
-                        className="discover-organizer-avatar"
-                      />
-                      <div className="discover-organizer-body">
-                        <div className="discover-organizer-top">
-                          <h4>{organizer.name}</h4>
-                          <span className="discover-organizer-role">{organizer.role}</span>
-                        </div>
-                        <span className="discover-organizer-username">@{organizer.username}</span>
-                        <p className="discover-organizer-bio">{organizer.bio}</p>
-                        <div className="discover-organizer-meta">
-                          <span>{organizer.location}</span>
-                          <span>{organizer.eventsHosted} events hosted</span>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            </div>
+            <DiscoverPage
+              activeCategory={activeCategory}
+              onCategoryChange={setActiveCategory}
+              onViewOrganizerProfile={handleViewOrganizerProfile}
+              onViewPostLocation={handleViewPostLocation}
+              feedVersion={feedVersion}
+              onFollowChange={bumpFeed}
+            />
           )}
 
-          {/* CHAT PAGE (INTERACTIVE PANEL) */}
+          {/* CHAT PAGE */}
           {activeTab === 'chat' && (
             <div className="chat-page-view animate-fadeIn">
-              <div className="chat-layout-container glass-card">
-                {/* Chat Left Panel */}
-                <div className="chat-session-list">
-                  <div className="chat-panel-header">
-                    <h3>Conversations</h3>
-                    <button className="new-chat-btn"><Plus size={16} /></button>
-                  </div>
-                  <div className="chat-session-scroll">
-                    {allChatSessions.map((session) => (
-                      <div
-                        key={session.id}
-                        className={`chat-session-item ${session.id === activeChatId ? 'active' : ''}`}
-                        onClick={() => setActiveChatId(session.id)}
-                      >
-                        <div className="session-avatar-wrap">
-                          <img src={session.avatar} alt={session.name} className="session-avatar" />
-                          {session.online && <span className="session-online-dot" />}
-                          {session.isGroup && <span className="session-group-badge">GC</span>}
-                        </div>
-                        <div className="session-details">
-                          <div className="session-name-row">
-                            <span className="session-name">{session.name}</span>
-                            <span className="session-time">
-                              {session.messages[session.messages.length - 1]?.time || ''}
-                            </span>
-                          </div>
-                          <span className="session-message-preview">
-                            {session.messages[session.messages.length - 1]?.text || 'No messages yet'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Chat Right Panel (Conversation Box) */}
-                <div className="chat-conversation-box">
-                  <div className="conversation-header">
-                    <div className="conversation-user-info">
-                      <img src={activeChat.avatar} alt={activeChat.name} className="conversation-avatar" />
-                      <div>
-                        <span className="conversation-name">{activeChat.name}</span>
-                        <span className="conversation-status">
-                          {activeChat.isGroup
-                            ? activeChat.role
-                            : activeChat.online
-                            ? 'Online'
-                            : 'Offline'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="conversation-messages-list">
-                    {activeChat.messages.map((msg) => (
-                      <div key={msg.id} className={`chat-message-bubble ${msg.sender}`}>
-                        <div className="message-content-box">
-                          <p className="message-text">{msg.text}</p>
-                          <span className="message-time">{msg.time}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="conversation-input-row">
-                    <input
-                      type="text"
-                      placeholder={`Type a message to ${activeChat.name}...`}
-                      value={typedMessage}
-                      onChange={(e) => setTypedMessage(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSendMessage();
-                      }}
-                      className="chat-message-input"
-                    />
-                    <button
-                      className="chat-send-btn"
-                      onClick={handleSendMessage}
-                      aria-label="Send message"
-                    >
-                      <Send size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <ChatPage
+                feedPosts={feed}
+                createGroupOpen={chatCreateGroupOpen}
+                onCreateGroupOpenChange={setChatCreateGroupOpen}
+              />
             </div>
           )}
 
           {/* PROFILE PAGE */}
           {activeTab === 'profile' && (
             <div className="profile-page-view animate-fadeIn">
-              <ProfileView />
+              <ProfileView
+                userId={viewingProfileId}
+                onViewProfile={handleViewOrganizerProfile}
+                onBack={() => setViewingProfileId(null)}
+              />
             </div>
           )}
 
@@ -830,7 +544,7 @@ export const Layout: React.FC = () => {
               <div className="panel-notif-item unread">
                 <div className="panel-notif-dot" />
                 <div className="panel-notif-info">
-                  <span className="panel-notif-text"><strong>Rahul Sharma</strong> sent you a connection request.</span>
+                  <span className="panel-notif-text"><strong>Rahul Sharma</strong> wants to Dab Up with you.</span>
                   <span className="panel-notif-time">2h ago</span>
                 </div>
               </div>
@@ -849,10 +563,10 @@ export const Layout: React.FC = () => {
             </div>
           </div>
 
-          {/* Suggested Connections */}
+          {/* Suggested Dab Ups */}
           <div className="glass-card right-panel-card">
             <div className="panel-heading">
-              <h3>Suggested Connections</h3>
+              <h3>Suggested Dab Ups</h3>
               <span>3 new</span>
             </div>
             <ul className="panel-list">
@@ -861,21 +575,21 @@ export const Layout: React.FC = () => {
                   <strong>Rahul Sharma</strong>
                   <span>Cricket Captain</span>
                 </div>
-                <button className="panel-item-action-btn">Connect</button>
+                <button className="panel-item-action-btn">Dab Up</button>
               </li>
               <li>
                 <div className="panel-item-left">
                   <strong>Neha Reddy</strong>
                   <span>Event Host</span>
                 </div>
-                <button className="panel-item-action-btn">Connect</button>
+                <button className="panel-item-action-btn">Dab Up</button>
               </li>
               <li>
                 <div className="panel-item-left">
                   <strong>Aisha Khan</strong>
                   <span>Fitness Trainer</span>
                 </div>
-                <button className="panel-item-action-btn">Connect</button>
+                <button className="panel-item-action-btn">Dab Up</button>
               </li>
             </ul>
           </div>
@@ -977,7 +691,7 @@ export const Layout: React.FC = () => {
                 <div className="panel-notif-item unread">
                   <div className="panel-notif-dot" />
                   <div className="panel-notif-info">
-                    <span className="panel-notif-text"><strong>Rahul Sharma</strong> sent you a connection request.</span>
+                    <span className="panel-notif-text"><strong>Rahul Sharma</strong> wants to Dab Up with you.</span>
                     <span className="panel-notif-time">2h ago</span>
                   </div>
                 </div>
@@ -1000,7 +714,7 @@ export const Layout: React.FC = () => {
       )}
 
       {/* Bottom Navigation Bar (Visible on Mobile <768px) */}
-      <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Navbar activeTab={activeTab} setActiveTab={handleTabChange} />
 
       {/* Premium Membership Modal */}
       <MembershipModal isOpen={isMembershipOpen} onClose={() => setIsMembershipOpen(false)} />

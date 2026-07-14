@@ -601,9 +601,10 @@ body {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: var(--explore-bg-secondary, #f0f0f2);
-  color: var(--explore-text, #1d1d1f);
+  background: var(--text-primary);
+  color: var(--bg-primary);
   flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .slots-toggle.is-on .slots-toggle-icon {
@@ -1626,6 +1627,62 @@ body {
   background: var(--bg-secondary) !important;
 }
 
+/* Light mode — stronger contrast on create-event surfaces */
+[data-theme="light"] .create-event-form .form-group input[type="text"],
+[data-theme="light"] .create-event-form .form-group select,
+[data-theme="light"] .create-event-form .form-group textarea,
+[data-theme="light"] .create-event-form .form-group input[type="date"],
+[data-theme="light"] .create-event-form .form-group input[type="time"],
+[data-theme="light"] .create-event-form .location-search-input-wrap input {
+  background: #e8e8ed !important;
+  border-color: #b0b0b8 !important;
+  color: #1d1d1f !important;
+}
+
+[data-theme="light"] .create-event-form .form-group input::placeholder,
+[data-theme="light"] .create-event-form .form-group textarea::placeholder,
+[data-theme="light"] .create-event-form .location-search-input-wrap input::placeholder {
+  color: #5c5c63;
+  opacity: 1;
+}
+
+[data-theme="light"] .create-event-form .input-with-icon .input-icon {
+  color: #5c5c63;
+}
+
+[data-theme="light"] .create-event-form .slots-toggle {
+  background: #e8e8ed;
+  border-color: #b0b0b8;
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .create-event-form .slots-toggle-copy span,
+[data-theme="light"] .create-event-form .field-hint,
+[data-theme="light"] .create-event-form .label-optional {
+  color: #5c5c63;
+}
+
+[data-theme="light"] .create-event-form .category-toggle-group {
+  background: #e8e8ed !important;
+  border-color: #b0b0b8 !important;
+}
+
+[data-theme="light"] .create-event-form .media-upload-btn {
+  background: #e8e8ed;
+  border-color: #b0b0b8;
+  color: #1d1d1f;
+}
+
+[data-theme="light"] .create-event-form .game-access-option {
+  background: #e8e8ed;
+  border-color: #b0b0b8;
+}
+
+[data-theme="light"] .create-event-form .people-list-chip {
+  background: #e8e8ed;
+  border-color: #b0b0b8;
+}
+
 .field-hint {
   margin: 0;
   font-size: 11px;
@@ -1808,6 +1865,261 @@ body {
   font-family: var(--explore-font-family);
   color: var(--text-secondary);
   line-height: 1.35;
+}
+
+/* My people lists (bottom of create event) */
+.create-event-section--lists {
+  border-top: 1px solid var(--border-color);
+  padding-top: 4px;
+}
+
+.people-lists-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.people-list-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.people-list-chip:active {
+  transform: scale(0.96);
+}
+
+.people-list-chip--new {
+  border-style: dashed;
+  color: var(--text-secondary);
+}
+
+.people-list-chip-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.people-lists-empty {
+  margin: 8px 0 0;
+}
+
+.people-list-action-overlay,
+.people-list-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2400;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  padding: 16px;
+}
+
+.people-list-edit-overlay {
+  align-items: center;
+}
+
+.people-list-action-sheet {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  margin-bottom: 72px;
+  animation: homeMenuSlide 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.people-list-action-title {
+  margin: 0;
+  padding: 14px 16px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.people-list-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-top: 1px solid var(--border-color);
+  background: none;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.people-list-action-btn--muted {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.people-list-edit-panel {
+  width: 100%;
+  max-width: 420px;
+  max-height: min(80vh, 560px);
+  overflow-y: auto;
+  border-radius: 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  animation: homeMenuSlide 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.people-list-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.people-list-edit-head h5 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.people-list-delete-btn {
+  display: inline-flex;
+  padding: 6px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #e53935;
+  cursor: pointer;
+}
+
+.people-list-edit-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.people-list-name-input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.people-list-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.people-list-member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.people-list-member-row.is-on {
+  border-color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.people-list-member-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.people-list-member-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.people-list-member-meta strong {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.people-list-member-meta small {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.people-list-member-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.people-list-member-row.is-on .people-list-member-check {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--bg-card);
+}
+
+.people-list-edit-done {
+  width: 100%;
+  margin-top: 14px;
+  padding: 12px;
+  border: none;
+  border-radius: 12px;
+  background: var(--text-primary);
+  color: var(--bg-card);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 /* Location search under map */

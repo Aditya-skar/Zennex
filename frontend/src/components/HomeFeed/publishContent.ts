@@ -1,5 +1,6 @@
 import {
   appendExploreEvent,
+  removeExploreEvent,
   type ExploreEvent,
   type GameAccess,
 } from '../ExplorePage/exploreEvents';
@@ -9,7 +10,9 @@ import {
   type HomePostType,
   type RegistrationType,
   ME_AUTHOR_ID,
+  getCurrentUserOrganizer,
 } from './homeFeed';
+import { ensureEventChat } from '../common/eventChats';
 
 const USER_POSTS_KEY = 'zenex-user-posts-v1';
 export const USER_POSTS_CHANGED_EVENT = 'zenex-user-posts-changed';
@@ -35,6 +38,8 @@ export type CreateEventPayload = {
   registrationType?: RegistrationType;
   slotsTotal?: number;
   registrationDeadline?: string; // yyyy-mm-ddTHH:mm (local)
+  /** When true (default), host gets a group chat on publish. */
+  createGroupChat?: boolean;
 };
 
 /* ---------- User post storage ---------- */
@@ -52,6 +57,17 @@ export function loadUserPosts(): HomeFeedPost[] {
 
 export function addUserPost(post: HomeFeedPost): void {
   const next = [post, ...loadUserPosts()];
+  localStorage.setItem(USER_POSTS_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(USER_POSTS_CHANGED_EVENT));
+}
+
+/** True for posts created by the current user via Create Event. */
+export function isUserCreatedPost(post: HomeFeedPost): boolean {
+  return post.id.startsWith('user-') && post.authorId === ME_AUTHOR_ID;
+}
+
+export function deleteUserPost(postId: string): void {
+  const next = loadUserPosts().filter((p) => p.id !== postId);
   localStorage.setItem(USER_POSTS_KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent(USER_POSTS_CHANGED_EVENT));
 }
@@ -193,5 +209,26 @@ export function publishEvent(data: CreateEventPayload): {
   const post = buildHomePost(data);
   appendExploreEvent(event);
   addUserPost(post);
+
+  if (data.createGroupChat !== false) {
+    const me = getCurrentUserOrganizer();
+    ensureEventChat({
+      eventId: event.id,
+      title: event.title,
+      category: event.category,
+      avatar: me.avatar,
+      hostName: me.name,
+      hostId: me.id,
+    });
+  }
+
   return { event, post };
+}
+
+/** Remove a user-created post and its linked map event. */
+export function deletePublishedPost(post: HomeFeedPost): boolean {
+  if (!isUserCreatedPost(post)) return false;
+  deleteUserPost(post.id);
+  removeExploreEvent(post.eventId);
+  return true;
 }

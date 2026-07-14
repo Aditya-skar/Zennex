@@ -4,10 +4,16 @@ export const SPORTS_CATEGORIES = [
   'Cricket',
   'Basketball',
   'Football',
+  'Volleyball',
   'Pickleball',
   'Tennis',
   'Badminton',
   'Running',
+  'Hiking',
+  'Yoga',
+  'Pilates',
+  'Weightlifting',
+  'Calisthenics',
   'Skateboard',
   'Swimming',
 ] as const;
@@ -19,9 +25,39 @@ export const ENTERTAINMENT_CATEGORIES = [
   'Cosplaying',
 ] as const;
 
+/**
+ * "Weightlifting" doubles as an umbrella for heavy-lifting styles. These share
+ * the weightlifting pin/icon, but each stays a distinct event category.
+ */
+export const WEIGHTLIFTING_SUBCATEGORIES = [
+  'CrossFit',
+  'Bodybuilding',
+] as const;
+
 export type SportsCategory = (typeof SPORTS_CATEGORIES)[number];
 export type EntertainmentCategory = (typeof ENTERTAINMENT_CATEGORIES)[number];
 export type EventCategory = SportsCategory | EntertainmentCategory;
+
+/** True when a category belongs to the Weightlifting umbrella (incl. itself). */
+export function isWeightliftingCategory(category: string): boolean {
+  const key = category.trim().toLowerCase();
+  if (key === 'weightlifting' || key === 'gym') return true;
+  return (WEIGHTLIFTING_SUBCATEGORIES as readonly string[]).some(
+    (c) => c.toLowerCase() === key
+  );
+}
+
+const ALLOWED_SPORTS = new Set<string>([
+  ...SPORTS_CATEGORIES,
+  ...WEIGHTLIFTING_SUBCATEGORIES,
+]);
+
+const ALLOWED_ENTERTAINMENT = new Set<string>([...ENTERTAINMENT_CATEGORIES]);
+
+/** Categories that belong in Discover / Explore sports or entertainment sections. */
+export function isAllowedFeedCategory(category: string): boolean {
+  return ALLOWED_SPORTS.has(category) || ALLOWED_ENTERTAINMENT.has(category);
+}
 
 type PinGroup = 'sports' | 'entertainment';
 
@@ -33,7 +69,7 @@ type PinStyle = {
 
 const ICON_BASE = '/icons/3d';
 // Bump when icon images are replaced so browsers/PWA caches fetch fresh assets.
-const ICON_VERSION = '2';
+const ICON_VERSION = '15';
 const icon = (name: string) => `${ICON_BASE}/${name}.png?v=${ICON_VERSION}`;
 
 const PIN_STYLES: Record<string, PinStyle> = {
@@ -43,7 +79,14 @@ const PIN_STYLES: Record<string, PinStyle> = {
   pickleball: { slug: 'pickleball', group: 'sports', iconSrc: icon('pickleball') },
   tennis: { slug: 'tennis', group: 'sports', iconSrc: icon('tennis') },
   badminton: { slug: 'badminton', group: 'sports', iconSrc: icon('badminton') },
+  volleyball: { slug: 'volleyball', group: 'sports', iconSrc: icon('volleyball') },
   running: { slug: 'running', group: 'sports', iconSrc: icon('running') },
+  hiking: { slug: 'hiking', group: 'sports', iconSrc: icon('hiking') },
+  yoga: { slug: 'yoga', group: 'sports', iconSrc: icon('yoga') },
+  pilates: { slug: 'pilates', group: 'sports', iconSrc: icon('pilates') },
+  weightlifting: { slug: 'weightlifting', group: 'sports', iconSrc: icon('weightlifting') },
+  calisthenics: { slug: 'calisthenics', group: 'sports', iconSrc: icon('calisthenics') },
+  cycling: { slug: 'cycling', group: 'sports', iconSrc: icon('running') },
   skateboard: { slug: 'skateboard', group: 'sports', iconSrc: icon('skateboard') },
   swimming: { slug: 'swimming', group: 'sports', iconSrc: icon('swimming') },
   music: { slug: 'music', group: 'entertainment', iconSrc: icon('music') },
@@ -60,7 +103,21 @@ const CATEGORY_ALIASES: Record<string, keyof typeof PIN_STYLES> = {
   pickleball: 'pickleball',
   tennis: 'tennis',
   badminton: 'badminton',
+  volleyball: 'volleyball',
   running: 'running',
+  hiking: 'hiking',
+  trek: 'hiking',
+  trekking: 'hiking',
+  yoga: 'yoga',
+  pilates: 'pilates',
+  weightlifting: 'weightlifting',
+  'weight lifting': 'weightlifting',
+  gym: 'weightlifting',
+  calisthenics: 'calisthenics',
+  // Heavy-lifting styles share the weightlifting icon.
+  crossfit: 'weightlifting',
+  bodybuilding: 'weightlifting',
+  'body building': 'weightlifting',
   skateboard: 'skateboard',
   skating: 'skateboard',
   swimming: 'swimming',
@@ -77,12 +134,22 @@ const CATEGORY_ALIASES: Record<string, keyof typeof PIN_STYLES> = {
   clubs: 'clubbing',
   cosplaying: 'cosplaying',
   cosplay: 'cosplaying',
-  'food events': 'default',
+  boxing: 'weightlifting',
+  cycling: 'cycling',
+  golf: 'tennis',
+  karaoke: 'music',
+  comedy: 'music',
+  art: 'cosplaying',
+  food: 'screening',
+  esports: 'clubbing',
+  dance: 'clubbing',
+  photography: 'screening',
+  'food events': 'screening',
 };
 
 export function normalizeEventCategory(category: string): keyof typeof PIN_STYLES {
   const key = category.trim().toLowerCase();
-  return CATEGORY_ALIASES[key] ?? 'default';
+  return CATEGORY_ALIASES[key] ?? 'football';
 }
 
 export function getEventPinStyle(category: string): PinStyle {
@@ -110,13 +177,11 @@ export function createEventMapPinHtml(
           class="event-pin-3d-img"
           src="${style.iconSrc}"
           alt="${label}"
-          width="30"
-          height="30"
           loading="lazy"
           draggable="false"
         />
-        ${countBadge}
       </div>
+      ${countBadge}
       <span class="event-pin-ground"></span>
       <span class="event-pin-pulse"></span>
     </div>

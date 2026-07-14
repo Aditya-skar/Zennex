@@ -7,7 +7,28 @@ import 'leaflet/dist/leaflet.css';
 import './ExplorePage.css';
 import './userLocationMarker.css';
 import './eventMapIcons.css';
-import { createEventMapIcon, SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES } from './eventMapIcons';
+import { createEventMapIcon, SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES, isWeightliftingCategory } from './eventMapIcons';
+
+const RECENT_SUBFILTERS_KEY = 'zenex-explore-recent-subfilters';
+
+type MainCategory = 'Sports' | 'Entertainment';
+type RecentSubFiltersByMain = Record<MainCategory, string[]>;
+
+function loadRecentSubFilters(): RecentSubFiltersByMain {
+  try {
+    const saved = localStorage.getItem(RECENT_SUBFILTERS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved) as Partial<RecentSubFiltersByMain>;
+      return {
+        Sports: Array.isArray(parsed.Sports) ? parsed.Sports : [],
+        Entertainment: Array.isArray(parsed.Entertainment) ? parsed.Entertainment : [],
+      };
+    }
+  } catch {
+    /* ignore corrupt storage */
+  }
+  return { Sports: [], Entertainment: [] };
+}
 import { LocationMapPopup } from './LocationMapPopup';
 import { CreateEventModal } from './CreateEventModal';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -19,6 +40,7 @@ import {
   INITIAL_EVENTS,
   loadExploreEvents,
   mergeSeedEvents,
+  EXPLORE_EVENTS_CHANGED_EVENT,
   getEventOrganizer,
   groupEventsByLocation,
   locationKeyFromCoordinates,
@@ -143,6 +165,12 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     setEvents((prev) => mergeSeedEvents(prev));
   }, []);
 
+  useEffect(() => {
+    const refresh = () => setEvents(loadExploreEvents());
+    window.addEventListener(EXPLORE_EVENTS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(EXPLORE_EVENTS_CHANGED_EVENT, refresh);
+  }, []);
+
   // Toggles for iOS Floating Panels
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -155,6 +183,9 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMainCategory, setActiveMainCategory] = useState<'Sports' | 'Entertainment'>('Sports');
   const [activeSubFilter, setActiveSubFilter] = useState<string | null>(null);
+  const [recentSubFiltersByMain, setRecentSubFiltersByMain] = useState<RecentSubFiltersByMain>(
+    loadRecentSubFilters,
+  );
   const [isMainDropdownOpen, setIsMainDropdownOpen] = useState(false);
   const [isSubFilterExpanded, setIsSubFilterExpanded] = useState(false);
   const filterBarRef = useRef<HTMLDivElement>(null);
@@ -251,6 +282,10 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     localStorage.setItem('zenex-recent-searches-v3', JSON.stringify(recentSearches));
   }, [recentSearches]);
 
+  useEffect(() => {
+    localStorage.setItem(RECENT_SUBFILTERS_KEY, JSON.stringify(recentSubFiltersByMain));
+  }, [recentSubFiltersByMain]);
+
   // Focus a specific event location (e.g. from a Home feed post's "View location").
   useEffect(() => {
     if (!focusTarget) return;
@@ -328,6 +363,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
         category: joinConfirmEvent.category,
         avatar: organizer.avatar,
         hostName: organizer.name,
+        hostId: organizer.id,
       });
       setJoinVersion((v) => v + 1);
       toast.success(`You joined "${joinConfirmEvent.title}"! Added to the group chat 💬`, {
@@ -355,6 +391,9 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     const { event } = publishEvent(eventData as unknown as CreateEventPayload);
 
     setEvents(loadExploreEvents());
+    // Switch the filter to match the new event so its pin is actually visible.
+    setActiveMainCategory(event.mainCategory === 'Entertainment' ? 'Entertainment' : 'Sports');
+    setActiveSubFilter(null);
     setMapCenter(event.coordinates);
     setMapZoom(14);
     setOpenLocationKey(locationKeyFromCoordinates(event.coordinates));
@@ -367,18 +406,52 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const subFilterOptions =
     activeMainCategory === 'Sports' ? [...SPORTS_CATEGORIES] : [...ENTERTAINMENT_CATEGORIES];
 
-  // Categories tucked behind the "+ More" chip until expanded.
-  const EXTRA_SUB_FILTERS = ['Skateboard', 'Swimming'];
-  const extraSubFilters = subFilterOptions.filter((f) => EXTRA_SUB_FILTERS.includes(f));
-  const hasMoreSubFilters = extraSubFilters.length > 0;
-  const visibleSubFilters =
-    isSubFilterExpanded || !hasMoreSubFilters
-      ? subFilterOptions
-      : subFilterOptions.filter((f) => !EXTRA_SUB_FILTERS.includes(f) || f === activeSubFilter);
+  const orderedSubFilters = useMemo(() => {
+    const recent = recentSubFiltersByMain[activeMainCategory].filter((filter) =>
+      subFilterOptions.includes(filter),
+    );
+    const rest = subFilterOptions.filter((filter) => !recent.includes(filter));
+    return [...recent, ...rest];
+  }, [subFilterOptions, recentSubFiltersByMain, activeMainCategory]);
+
+  const collapsedVisibleCount = Math.max(1, Math.floor(subFilterOptions.length / 2));
+  const hasMoreSubFilters = subFilterOptions.length > collapsedVisibleCount;
+
+  const visibleSubFilters = useMemo(() => {
+    if (isSubFilterExpanded || !hasMoreSubFilters) {
+      return orderedSubFilters;
+    }
+
+    let visible = orderedSubFilters.slice(0, collapsedVisibleCount);
+    if (activeSubFilter && !visible.includes(activeSubFilter)) {
+      visible = [
+        activeSubFilter,
+        ...visible.filter((filter) => filter !== activeSubFilter),
+      ].slice(0, collapsedVisibleCount);
+    }
+    return visible;
+  }, [
+    orderedSubFilters,
+    isSubFilterExpanded,
+    hasMoreSubFilters,
+    collapsedVisibleCount,
+    activeSubFilter,
+  ]);
 
   const subFilterLabel = (category: string) => {
     if (category === 'Music') return 'Music / DJ';
     return category;
+  };
+
+  const handleSubFilterClick = (filter: string | null) => {
+    setActiveSubFilter(filter);
+    if (!filter) return;
+
+    setRecentSubFiltersByMain((prev) => {
+      const current = prev[activeMainCategory];
+      const next = [filter, ...current.filter((item) => item !== filter)];
+      return { ...prev, [activeMainCategory]: next };
+    });
   };
 
   const handleMainCategoryChange = (category: 'Sports' | 'Entertainment') => {
@@ -392,7 +465,14 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const filteredEvents = useMemo(() => {
     return events.filter((event: ExploreEvent) => {
       if (event.mainCategory !== activeMainCategory) return false;
-      if (activeSubFilter && event.category !== activeSubFilter) return false;
+      if (activeSubFilter) {
+        // "Weightlifting" is an umbrella filter – match heavy-lifting styles too.
+        if (activeSubFilter === 'Weightlifting') {
+          if (!isWeightliftingCategory(event.category)) return false;
+        } else if (event.category !== activeSubFilter) {
+          return false;
+        }
+      }
 
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
@@ -548,7 +628,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
               <button
                 type="button"
                 className={`explore-filter-chip ${activeSubFilter === null ? 'active' : ''}`}
-                onClick={() => setActiveSubFilter(null)}
+                onClick={() => handleSubFilterClick(null)}
               >
                 All
               </button>
@@ -557,7 +637,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
                   key={filter}
                   type="button"
                   className={`explore-filter-chip ${activeSubFilter === filter ? 'active' : ''}`}
-                  onClick={() => setActiveSubFilter(filter)}
+                  onClick={() => handleSubFilterClick(filter)}
                 >
                   {subFilterLabel(filter)}
                 </button>

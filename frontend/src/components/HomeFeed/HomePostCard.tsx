@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -6,11 +6,13 @@ import {
   Lock,
   Globe,
   Repeat2,
-  UserRound,
-  X,
+  MoreVertical,
+  Share2,
+  Trash2,
   CalendarClock,
   Sparkles,
   Star,
+  UserPlus,
 } from 'lucide-react';
 import {
   type HomeFeedPost,
@@ -18,7 +20,7 @@ import {
   getPostHost,
   isEventPast,
   getHostRating,
-  FALLBACK_POST_IMAGE,
+  fallbackImageFor,
   ME_AUTHOR_ID,
 } from './homeFeed';
 import {
@@ -29,13 +31,10 @@ import {
   recordInteraction,
 } from './feedAlgorithm';
 import PostCountdown from './PostCountdown';
-import { isJoined as checkJoined, toggleJoin } from './publishContent';
+import { isJoined as checkJoined, toggleJoin, deletePublishedPost, isUserCreatedPost } from './publishContent';
 import ConfirmDialog from '../common/ConfirmDialog';
-import { ensureEventChat, removeEventChat } from '../common/eventChats';
-import { UserPlus } from 'lucide-react';
+import { ensureEventChat, removeEventChat, deleteEventTranscript } from '../common/eventChats';
 import './HomeFeed.css';
-
-const LONG_PRESS_MS = 450;
 
 type HomePostCardProps = {
   post: HomeFeedPost;
@@ -44,6 +43,7 @@ type HomePostCardProps = {
   onViewLocation: (post: HomeFeedPost) => void;
   onViewAuthorProfile: (authorId: string) => void;
   onFollowChange?: () => void;
+  onPostDeleted?: () => void;
 };
 
 function reasonLabel(reason?: FeedReason): { icon: React.ReactNode; text: string } | null {
@@ -67,18 +67,23 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
   onViewLocation,
   onViewAuthorProfile,
   onFollowChange,
+  onPostDeleted,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [liked, setLiked] = useState(false);
   const [reposted, setReposted] = useState(false);
   const [following, setFollowing] = useState(() => checkFollowing(post.authorId));
   const [joined, setJoined] = useState(() => checkJoined(post.eventId));
   const [confirmJoinOpen, setConfirmJoinOpen] = useState(false);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
+  const [captionClamped, setCaptionClamped] = useState(false);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   const triedFallback = useRef(false);
-  const pressTimer = useRef<number | null>(null);
   const cardRef = useRef<HTMLElement>(null);
+  const captionRef = useRef<HTMLParagraphElement>(null);
+  const moreWrapRef = useRef<HTMLDivElement>(null);
 
   // Dwell tracking – accumulate visible time and report it for affinity learning.
   const dwellStart = useRef<number | null>(null);
@@ -89,37 +94,46 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
   const past = isEventPast(post);
   const badge = reasonLabel(reason);
   const isOwnPost = post.authorId === ME_AUTHOR_ID;
+  const canDelete = isUserCreatedPost(post);
   const { rating, count } = getHostRating(post);
 
-  const clearPressTimer = useCallback(() => {
-    if (pressTimer.current !== null) {
-      window.clearTimeout(pressTimer.current);
-      pressTimer.current = null;
+  useEffect(() => {
+    setCaptionExpanded(false);
+  }, [post.id]);
+
+  useEffect(() => {
+    if (captionExpanded) {
+      setCaptionClamped(false);
+      return;
     }
-  }, []);
+    const el = captionRef.current;
+    if (!el) return;
 
-  const startPress = useCallback(() => {
-    clearPressTimer();
-    pressTimer.current = window.setTimeout(() => {
-      setIsMenuOpen(true);
-      if ('vibrate' in navigator) navigator.vibrate?.(15);
-    }, LONG_PRESS_MS);
-  }, [clearPressTimer]);
-
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsMenuOpen(true);
-  };
-
-  useEffect(() => clearPressTimer, [clearPressTimer]);
+    const check = () => setCaptionClamped(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [post.caption, captionExpanded]);
 
   useEffect(() => {
     if (!isMenuOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsMenuOpen(false);
     };
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (moreWrapRef.current && !moreWrapRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
   }, [isMenuOpen]);
 
   // Track how long the post stays on screen (>=55% visible).
@@ -158,6 +172,35 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
   }, [post]);
 
   const closeMenu = () => setIsMenuOpen(false);
+
+  const handleShare = async () => {
+    closeMenu();
+    const shareUrl = `${window.location.origin}${window.location.pathname}?event=${post.eventId}`;
+    const shareText = `${post.eventTitle} · ${post.eventDateLabel}\n${post.eventLocation}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: post.eventTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+      }
+    } catch {
+      /* user cancelled share sheet */
+    }
+  };
+
+  const handleDelete = () => {
+    if (deletePublishedPost(post)) {
+      removeEventChat(post.eventId);
+      deleteEventTranscript(post.eventId);
+      onPostDeleted?.();
+    }
+    setConfirmDeleteOpen(false);
+    closeMenu();
+  };
 
   const handleLike = () => {
     setLiked((v) => {
@@ -208,6 +251,7 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
         category: post.category,
         avatar: author.avatar,
         hostName: author.name,
+        hostId: post.authorId,
       });
       if ('vibrate' in navigator) navigator.vibrate?.(10);
     }
@@ -225,13 +269,6 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
       className={`home-post-card ${post.type === 'text' ? 'home-post-card--text' : ''} ${
         past ? 'home-post-card--past' : ''
       }`}
-      onTouchStart={startPress}
-      onTouchEnd={clearPressTimer}
-      onTouchMove={clearPressTimer}
-      onMouseDown={startPress}
-      onMouseUp={clearPressTimer}
-      onMouseLeave={clearPressTimer}
-      onContextMenu={handleContextMenu}
     >
       {badge && (
         <div className="home-post-reason">
@@ -275,7 +312,7 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
               className={`home-post-follow ${following ? 'is-following' : ''}`}
               onClick={handleFollow}
             >
-              {following ? 'Following' : 'Follow'}
+              {following ? 'Boosting' : 'Boost'}
             </button>
           )}
           <span
@@ -284,10 +321,70 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
           >
             {post.visibility === 'private' ? <Lock size={12} /> : <Globe size={12} />}
           </span>
+
+          {isOwnPost && (
+            <div className="home-post-more-wrap" ref={moreWrapRef}>
+              <button
+                type="button"
+                className="home-post-more-btn"
+                aria-label="Post options"
+                aria-expanded={isMenuOpen}
+                aria-haspopup="menu"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMenuOpen((open) => !open);
+                }}
+              >
+                <MoreVertical size={17} />
+              </button>
+
+              {isMenuOpen && (
+                <div className="home-post-more-menu" role="menu">
+                  <button type="button" className="home-post-more-item" role="menuitem" onClick={handleShare}>
+                    <Share2 size={16} />
+                    Share post
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      className="home-post-more-item home-post-more-item--danger"
+                      role="menuitem"
+                      onClick={() => {
+                        closeMenu();
+                        setConfirmDeleteOpen(true);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                      Delete post
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
-      <p className="home-post-caption">{post.caption}</p>
+      <div className="home-post-caption-wrap">
+        <p
+          ref={captionRef}
+          className={`home-post-caption ${!captionExpanded ? 'is-clamped' : ''}`}
+        >
+          {post.caption}
+        </p>
+        {!captionExpanded && captionClamped && (
+          <button
+            type="button"
+            className="home-post-caption-more"
+            onClick={(e) => {
+              e.stopPropagation();
+              setCaptionExpanded(true);
+            }}
+          >
+            +more
+          </button>
+        )}
+      </div>
 
       {post.type === 'poster' && post.image && (
         <div className={`home-post-media ${imgLoaded ? 'is-loaded' : ''}`}>
@@ -305,7 +402,7 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
               onError={(e) => {
                 if (!triedFallback.current) {
                   triedFallback.current = true;
-                  e.currentTarget.src = FALLBACK_POST_IMAGE;
+                  e.currentTarget.src = fallbackImageFor(post.id);
                 } else {
                   setImgFailed(true);
                 }
@@ -370,51 +467,20 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
         </button>
       </footer>
 
-      {isMenuOpen && (
-        <div className="home-post-menu-overlay" onClick={closeMenu}>
-          <div className="home-post-menu" role="menu" onClick={(e) => e.stopPropagation()}>
-            <div className="home-post-menu-header">
-              <span>Post options</span>
-              <button type="button" className="home-post-menu-close" onClick={closeMenu}>
-                <X size={16} />
-              </button>
-            </div>
-
-            {post.isReshared && host && (
-              <button
-                type="button"
-                className="home-post-menu-item"
-                onClick={() => {
-                  closeMenu();
-                  recordInteraction(post, 'openProfile');
-                  onViewHostProfile(host.id);
-                }}
-              >
-                <UserRound size={18} />
-                <span className="home-post-menu-copy">
-                  <strong>View host profile</strong>
-                  <small>{host.name} · original event host</small>
-                </span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="home-post-menu-item"
-              onClick={() => {
-                closeMenu();
-                handleLocation();
-              }}
-            >
-              <MapPin size={18} />
-              <span className="home-post-menu-copy">
-                <strong>View location</strong>
-                <small>Open {post.eventLocation} on Explore</small>
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        icon={<Trash2 size={24} />}
+        title="Delete this post?"
+        message={
+          <>
+            This removes <strong>{post.eventTitle}</strong> from your feed and the Explore map.
+          </>
+        }
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
 
       <ConfirmDialog
         open={confirmJoinOpen}

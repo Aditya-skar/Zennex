@@ -103,15 +103,23 @@ export const PostCountdown: React.FC<Props> = ({ post, joined, onToggleJoin }) =
         <span className="home-post-countdown">Registration closed</span>
       ) : remaining <= 0 ? null : (
         <span className="home-post-countdown">
-          {urgent ? (
-            <Flame size={12} className="home-post-flame" />
-          ) : (
-            <Timer size={12} className="home-post-clock" />
-          )}
-          <span className="home-post-countdown-label">
-            {target.kind === 'deadline' ? 'Closes' : 'Starts'}
+          <span className="home-post-countdown-icon" aria-hidden="true">
+            {urgent ? <Flame size={12} className="home-post-flame" /> : <Timer size={12} className="home-post-clock" />}
           </span>
-          <strong className="home-post-countdown-value">{formatRemaining(remaining)}</strong>
+          <span className="home-post-countdown-line">
+            <span className="home-post-countdown-label">
+              {target.kind === 'deadline' ? 'Closes' : 'Starts'}
+            </span>
+            <strong className="home-post-countdown-value">{formatRemaining(remaining)}</strong>
+            {post.category && (
+              <>
+                <span className="home-post-countdown-sep" aria-hidden="true">
+                  ·
+                </span>
+                <span className="home-post-category-tag">{post.category}</span>
+              </>
+            )}
+          </span>
         </span>
       )}
     </div>

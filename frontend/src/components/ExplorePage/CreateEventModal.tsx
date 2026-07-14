@@ -14,10 +14,12 @@ import {
   Film,
   Users,
   Timer,
+  MessageSquare,
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES, createEventMapIcon } from './eventMapIcons';
 import type { GameAccess } from './exploreEvents';
+import MyPeopleListsSection from './MyPeopleListsSection';
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION =
@@ -106,6 +108,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
   const [slots, setSlots] = useState('10');
   const [joinCloseDate, setJoinCloseDate] = useState('');
   const [joinCloseTime, setJoinCloseTime] = useState('');
+  const [createGroupChat, setCreateGroupChat] = useState(true);
 
   useEffect(() => {
     if (mainCategory === 'Sports') {
@@ -245,6 +248,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     setSlots('10');
     setJoinCloseDate('');
     setJoinCloseTime('');
+    setCreateGroupChat(true);
   };
 
   if (!isOpen) return null;
@@ -299,6 +303,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
       registrationType: limitedSlots ? 'limited' : 'open',
       slotsTotal: limitedSlots ? Number(slots) : undefined,
       registrationDeadline: limitedSlots ? `${joinCloseDate}T${joinCloseTime}` : undefined,
+      createGroupChat,
     });
 
     resetForm();
@@ -408,6 +413,31 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                   </span>
                 </button>
               </div>
+            </section>
+
+            <section className="create-event-section">
+              <h4 className="create-event-section-title">Group chat</h4>
+              <button
+                type="button"
+                className={`slots-toggle ${createGroupChat ? 'is-on' : ''}`}
+                onClick={() => setCreateGroupChat((v) => !v)}
+                aria-pressed={createGroupChat}
+              >
+                <span className="slots-toggle-icon">
+                  <MessageSquare size={16} />
+                </span>
+                <span className="slots-toggle-copy">
+                  <strong>Create group chat</strong>
+                  <span>
+                    {createGroupChat
+                      ? 'On — opens a GC for this event when you publish'
+                      : 'Off — no group chat for this event'}
+                  </span>
+                </span>
+                <span className="slots-toggle-pill" aria-hidden="true">
+                  <span className="slots-toggle-knob" />
+                </span>
+              </button>
             </section>
 
             <section className="create-event-section">
@@ -670,6 +700,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                 </div>
               )}
             </section>
+
+            <MyPeopleListsSection />
           </div>
 
           <footer className="modal-footer create-event-footer">

@@ -8,26 +8,14 @@ interface MobileAppFrameProps {
 }
 
 function useMobileShellMode() {
-  const [shellMode, setShellMode] = useState<'native' | 'phone' | 'fullscreen'>(() => {
-    if (isNativeMobileApp()) return 'native';
-    if (window.matchMedia('(max-width: 767px)').matches) return 'fullscreen';
-    return 'phone';
-  });
+  const [shellMode, setShellMode] = useState<'native' | 'phone'>(() =>
+    isNativeMobileApp() ? 'native' : 'phone',
+  );
 
   useEffect(() => {
     if (isNativeMobileApp()) {
       setShellMode('native');
-      return;
     }
-
-    const media = window.matchMedia('(max-width: 767px)');
-    const update = () => {
-      setShellMode(media.matches ? 'fullscreen' : 'phone');
-    };
-
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
   }, []);
 
   return shellMode;
@@ -37,7 +25,7 @@ function useMobileShellMode() {
 export const MobileAppFrame: React.FC<MobileAppFrameProps> = ({ children }) => {
   const shellMode = useMobileShellMode();
 
-  if (shellMode === 'native' || shellMode === 'fullscreen') {
+  if (shellMode === 'native') {
     return (
       <div className="mobile-app-screen mobile-app-mode mobile-fullscreen">
         <div className="mobile-app-content">{children}</div>

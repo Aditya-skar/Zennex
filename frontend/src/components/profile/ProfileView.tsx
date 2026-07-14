@@ -1,19 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Trophy, 
-  Target, 
-  Calendar, 
-  Users, 
   ChevronRight, 
+  ChevronLeft,
   X, 
-  Award, 
   Grid, 
   Bookmark, 
   Bell, 
   Settings, 
   Share2, 
-  MoreHorizontal, 
-  MapPin, 
   Check, 
   User as UserIcon, 
   HelpCircle, 
@@ -24,28 +18,72 @@ import {
   LogOut,
   MessageCircle,
   Mail,
-  CheckCircle2,
   Trash2,
   Copy,
   Link as LinkIcon,
-  Sparkles
+  Sparkles,
+  Star,
+  ChevronDown,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { ThemeSwitch } from '../ThemeSwitch';
 import { useTheme } from '../../themeContext';
 import { MembershipModal, getSavedPlan, PLAN_CHANGE_EVENT, PlanType } from '../Membership/Membership';
+import HomePostCard from '../HomeFeed/HomePostCard';
+import { FEED_CHANGED_EVENT, isFollowing, toggleFollow } from '../HomeFeed/feedAlgorithm';
+import { USER_POSTS_CHANGED_EVENT } from '../HomeFeed/publishContent';
+import {
+  DAB_UPS_CHANGED_EVENT,
+  getAchievementWins,
+  getBoostersCount,
+  getBoostingCount,
+  getDabUpStatus,
+  getDabUpsCount,
+  getEventsJoinedStats,
+  getHostingStats,
+  getMemberEventsJoinedStats,
+  getMemberHostingStats,
+  getMemberPosts,
+  getMemberRankProgress,
+  getMemberSocialCounts,
+  getProfileOrganizer,
+  getRankProgress,
+  getUserPostsFeed,
+  isOwnProfileUser,
+  sendDabUpRequest,
+} from './profileData';
+import { RANK_TIERS } from './rankConfig';
+import { RankBadge } from './RankBadge';
 import './ProfileView.css';
 
-type TabType = 'posts' | 'events' | 'badges' | 'saved';
+type TabType = 'posts' | 'events' | 'achievements' | 'saved';
+
+type ProfileViewProps = {
+  userId?: string | null;
+  onViewProfile?: (userId: string) => void;
+  onBack?: () => void;
+};
 
 // Taken usernames list for real-time validation mockup
 const TAKEN_USERNAMES = ['admin', 'neha', 'rahul', 'aisha', 'root', 'auth', 'sports', 'zenex', 'cricket', 'manager', 'football'];
 
-export const ProfileView: React.FC = () => {
+export const ProfileView: React.FC<ProfileViewProps> = ({
+  userId = null,
+  onViewProfile,
+  onBack,
+}) => {
+  const isOwnProfile = isOwnProfileUser(userId);
+  const profileUserId = isOwnProfile ? null : userId;
+  const member = getProfileOrganizer(userId);
+
   const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('posts');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  useEffect(() => {
+    setActiveTab('posts');
+  }, [userId]);
   
   // Membership states
   const [membershipPlan, setMembershipPlan] = useState<PlanType>(getSavedPlan);
@@ -81,11 +119,102 @@ export const ProfileView: React.FC = () => {
     return saved ? JSON.parse(saved) : ['Music', 'Food Events'];
   });
 
-  // Stats
-  const [followersCount, setFollowersCount] = useState<number>(0);
-  const [followingCount, setFollowingCount] = useState<number>(0);
-  const [eventsCount, setEventsCount] = useState<number>(0);
-  const [badgesCount, setBadgesCount] = useState<number>(0);
+  // Stats — derived live from the profile data layer; statsTick forces refresh.
+  const [statsTick, setStatsTick] = useState(0);
+  const bumpStats = () => setStatsTick((v) => v + 1);
+
+  useEffect(() => {
+    window.addEventListener(DAB_UPS_CHANGED_EVENT, bumpStats);
+    window.addEventListener(FEED_CHANGED_EVENT, bumpStats);
+    window.addEventListener(USER_POSTS_CHANGED_EVENT, bumpStats);
+    return () => {
+      window.removeEventListener(DAB_UPS_CHANGED_EVENT, bumpStats);
+      window.removeEventListener(FEED_CHANGED_EVENT, bumpStats);
+      window.removeEventListener(USER_POSTS_CHANGED_EVENT, bumpStats);
+    };
+  }, []);
+
+  /* eslint-disable react-hooks/exhaustive-deps */
+  const dabUpsCount = React.useMemo(
+    () => (isOwnProfile ? getDabUpsCount() : getMemberSocialCounts(profileUserId!).dabUps),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const boostersCount = React.useMemo(
+    () => (isOwnProfile ? getBoostersCount() : getMemberSocialCounts(profileUserId!).boosters),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const boostingCount = React.useMemo(
+    () => (isOwnProfile ? getBoostingCount() : getMemberSocialCounts(profileUserId!).boosting),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const eventsJoined = React.useMemo(
+    () => (isOwnProfile ? getEventsJoinedStats() : getMemberEventsJoinedStats(profileUserId!)),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const hostingStats = React.useMemo(
+    () => (isOwnProfile ? getHostingStats() : getMemberHostingStats(profileUserId!)),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const rank = React.useMemo(
+    () => (isOwnProfile ? getRankProgress() : getMemberRankProgress(profileUserId!)),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const userPosts = React.useMemo(
+    () => (isOwnProfile ? getUserPostsFeed() : getMemberPosts(profileUserId!)),
+    [statsTick, isOwnProfile, profileUserId],
+  );
+  const achievementWins = React.useMemo(
+    () => getAchievementWins(userId),
+    [userId, statsTick],
+  );
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  const displayName = isOwnProfile ? fullName : member.name;
+  const displayUsername = isOwnProfile ? username : member.username;
+  const displayBio = isOwnProfile ? (bio || 'Add a short bio about yourself.') : member.bio;
+  const displayAvatar = isOwnProfile ? avatar : member.avatar;
+  const displayRole = isOwnProfile ? null : member.role;
+
+  const [dabTick, setDabTick] = useState(0);
+  useEffect(() => {
+    const onDab = () => setDabTick((v) => v + 1);
+    window.addEventListener(DAB_UPS_CHANGED_EVENT, onDab);
+    return () => window.removeEventListener(DAB_UPS_CHANGED_EVENT, onDab);
+  }, []);
+
+  const dabStatus = React.useMemo(() => {
+    if (isOwnProfile || !profileUserId) return 'none';
+    return getDabUpStatus(profileUserId);
+  }, [isOwnProfile, profileUserId, dabTick]);
+
+  const handleDabUp = () => {
+    if (!profileUserId || dabStatus !== 'none') return;
+    sendDabUpRequest(profileUserId);
+    toast.success(`Dab Up sent to ${displayName}`);
+  };
+
+  const boostTargetId = profileUserId ?? '';
+  const [boostTick, setBoostTick] = useState(0);
+  useEffect(() => {
+    const onBoost = () => setBoostTick((v) => v + 1);
+    window.addEventListener(FEED_CHANGED_EVENT, onBoost);
+    return () => window.removeEventListener(FEED_CHANGED_EVENT, onBoost);
+  }, []);
+  const isBoosting = React.useMemo(
+    () => (boostTargetId ? isFollowing(boostTargetId) : false),
+    [boostTargetId, boostTick],
+  );
+
+  const handleBoost = () => {
+    if (!profileUserId) return;
+    const nowFollowing = toggleFollow(profileUserId);
+    toast.success(nowFollowing ? `Boosting ${displayName}` : `Stopped boosting ${displayName}`);
+    bumpStats();
+  };
+
+  // Rank ladder modal
+  const [isRankModalOpen, setIsRankModalOpen] = useState(false);
+  const [eventsBreakdownOpen, setEventsBreakdownOpen] = useState(false);
 
   // --------------------------------------------------
   // EDIT PROFILE TEMPORARY STATES
@@ -281,7 +410,7 @@ export const ProfileView: React.FC = () => {
   // --------------------------------------------------
   // SHARE PROFILE ACTIONS
   // --------------------------------------------------
-  const profileUrl = `https://zenex.app/u/${username}`;
+  const profileUrl = `https://zenex.app/u/${displayUsername}`;
 
   const copyProfileLink = () => {
     navigator.clipboard.writeText(profileUrl)
@@ -294,7 +423,7 @@ export const ProfileView: React.FC = () => {
   };
 
   const copyUsernameOnly = () => {
-    navigator.clipboard.writeText(`@${username}`)
+    navigator.clipboard.writeText(`@${displayUsername}`)
       .then(() => {
         toast.success('Username copied to clipboard');
       })
@@ -450,9 +579,9 @@ export const ProfileView: React.FC = () => {
       ctx.stroke();
 
       // Stats columns
-      drawStatCol(statX1, followersCount.toString(), 'Followers');
-      drawStatCol(statX2, eventsCount.toString(), 'Events');
-      drawStatCol(statX3, badgesCount.toString(), 'Badges');
+      drawStatCol(statX1, dabUpsCount.toString(), 'Dab Ups');
+      drawStatCol(statX2, boostersCount.toString(), 'Boosters');
+      drawStatCol(statX3, eventsJoined.attendedTotal.toString(), 'Events');
 
       // Helper function to draw single stat column
       function drawStatCol(x: number, val: string, label: string) {
@@ -557,14 +686,14 @@ export const ProfileView: React.FC = () => {
 
   // Helper stats click
   const handleStatClick = (statLabel: string) => {
-    if (statLabel === 'Followers' && followersCount === 0) {
-      toast('No followers yet.');
-    } else if (statLabel === 'Following' && followingCount === 0) {
-      toast('Not following anyone yet.');
-    } else if (statLabel === 'Events' && eventsCount === 0) {
-      toast('No events joined yet.');
-    } else if (statLabel === 'Badges' && badgesCount === 0) {
-      toast('Start participating in events to earn badges.');
+    if (statLabel === 'Dab Ups' && dabUpsCount === 0) {
+      toast('No Dab Ups yet — find people on Discover.');
+    } else if (statLabel === 'Boosters' && boostersCount === 0) {
+      toast('No Boosters yet.');
+    } else if (statLabel === 'Boosting' && boostingCount === 0) {
+      toast('Not boosting anyone yet.');
+    } else if (statLabel === 'Posts' && userPosts.length === 0) {
+      toast('No posts yet — share something in Base.');
     } else {
       toast(`Tapped on ${statLabel} details.`);
     }
@@ -575,290 +704,356 @@ export const ProfileView: React.FC = () => {
   };
 
   return (
-    <div className="ios-profile-shell">
-      {/* Hidden canvas for photo cropping */}
+    <div className="profile-page">
       <canvas ref={cropCanvasRef} style={{ display: 'none' }} />
 
-      {/* Settings gear trigger icon on mobile */}
-      <button 
-        type="button" 
-        className="ios-profile-settings-btn"
-        onClick={() => setIsSettingsOpen(true)}
-        aria-label="Settings"
+      {/* Top half of the phone — identity hero */}
+      <div className="profile-top-half">
+        <div className="profile-top-bar">
+          {isOwnProfile ? (
+            <span className="profile-top-side" aria-hidden="true" />
+          ) : (
+            <button type="button" className="profile-back-bar" onClick={onBack} aria-label="Back to your profile">
+              <ChevronLeft size={18} />
+              <span>{displayName}</span>
+            </button>
+          )}
+
+          {isOwnProfile && (
+            <p className="profile-app-title" aria-label="SIMSOR">SIMSOR</p>
+          )}
+
+          <button
+            type="button"
+            className="profile-top-share"
+            onClick={() => setIsShareModalOpen(true)}
+            aria-label="Share profile"
+          >
+            <Share2 size={18} />
+          </button>
+        </div>
+
+        <div className="profile-hero-wrap">
+        <section
+          className="profile-hero"
+          style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
+        >
+          <div className="profile-hero-content">
+            <div className="profile-hero-head">
+              {isOwnProfile ? (
+                <button
+                  type="button"
+                  className="profile-avatar-btn"
+                  onClick={handleOpenEdit}
+                  aria-label="Edit profile photo"
+                >
+                  <img src={displayAvatar} alt={`${displayName} profile`} className="profile-avatar-img" />
+                  <span className="profile-avatar-edit">
+                    <Camera size={14} />
+                  </span>
+                </button>
+              ) : (
+                <div className="profile-avatar-btn profile-avatar-btn--static">
+                  <img src={displayAvatar} alt={`${displayName} profile`} className="profile-avatar-img" />
+                </div>
+              )}
+
+              <div className="profile-identity">
+                <div className="profile-name-row">
+                  <h1 className="profile-name">{displayName}</h1>
+                  {isOwnProfile && (
+                    <span className="profile-verified" title="Verified">
+                      <Check size={10} strokeWidth={3} />
+                    </span>
+                  )}
+                </div>
+                <span className="profile-handle">@{displayUsername}</span>
+                {displayRole && <span className="profile-role">{displayRole}</span>}
+              </div>
+            </div>
+
+            <p className={`profile-bio${isOwnProfile && !bio ? ' profile-bio--empty' : ''}`}>
+              {displayBio}
+            </p>
+          </div>
+
+          <div className="profile-hero-aside">
+            <div className="profile-hero-badge-wrap">
+              <RankBadge
+                tierId={rank.tier.id}
+                size={96}
+                className="profile-hero-rank-badge"
+                onClick={() => setIsRankModalOpen(true)}
+              />
+            </div>
+          </div>
+
+          {isOwnProfile ? (
+            <button
+              type="button"
+              className="profile-hero-edit-btn"
+              onClick={handleOpenEdit}
+            >
+              <UserIcon size={13} />
+              Edit Profile
+            </button>
+          ) : (
+            <div className="profile-hero-actions">
+              <button
+                type="button"
+                className={`profile-action-btn profile-action-btn--primary ${dabStatus === 'dabbed_up' ? 'profile-action-btn--dabbed' : ''}`}
+                onClick={handleDabUp}
+                disabled={dabStatus !== 'none'}
+              >
+                {dabStatus === 'dabbed_up' ? 'Dabbed Up' : dabStatus === 'pending' ? 'Pending…' : 'Dab Up'}
+              </button>
+              <button
+                type="button"
+                className={`profile-action-btn ${isBoosting ? 'profile-action-btn--boosting' : 'profile-action-btn--primary'}`}
+                onClick={handleBoost}
+              >
+                {isBoosting ? 'Boosting' : 'Boost'}
+              </button>
+            </div>
+          )}
+        </section>
+        </div>
+
+        <div className="profile-stats-row profile-stats-row--hero">
+          <button type="button" className="profile-stat" onClick={() => handleStatClick('Dab Ups')}>
+            <span className="profile-stat-value">{dabUpsCount}</span>
+            <span className="profile-stat-label">Dab Ups</span>
+          </button>
+          <button type="button" className="profile-stat" onClick={() => handleStatClick('Boosters')}>
+            <span className="profile-stat-value">{boostersCount}</span>
+            <span className="profile-stat-label">Boosters</span>
+          </button>
+          <button type="button" className="profile-stat" onClick={() => handleStatClick('Boosting')}>
+            <span className="profile-stat-value">{boostingCount}</span>
+            <span className="profile-stat-label">Boosting</span>
+          </button>
+          <button type="button" className="profile-stat" onClick={() => handleStatClick('Posts')}>
+            <span className="profile-stat-value">{userPosts.length}</span>
+            <span className="profile-stat-label">Posts</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="profile-bottom-half">
+      {/* XP progress — rank name matches hero badge */}
+      <button
+        type="button"
+        className="profile-xp-line"
+        onClick={() => setIsRankModalOpen(true)}
+        style={{ '--rank-color': rank.tier.color } as React.CSSProperties}
       >
-        <Settings size={20} />
+        <div className="profile-xp-line-head">
+          <span className="profile-xp-line-name">{rank.tier.name}</span>
+          <span className="profile-xp-line-xp">{rank.xp.toLocaleString()} XP</span>
+        </div>
+        {rank.isMaxRank ? (
+          <span className="profile-xp-line-max">MAX RANK</span>
+        ) : (
+          <>
+            <div className="profile-xp-line-bar">
+              <div
+                className="profile-xp-line-bar-fill"
+                style={{ width: `${Math.round(rank.progress * 100)}%` }}
+              />
+            </div>
+            <span className="profile-xp-line-next">
+              {rank.xpIntoTier.toLocaleString()} / {rank.xpTierSpan.toLocaleString()} XP to {rank.nextTier?.name}
+            </span>
+          </>
+        )}
+        <ChevronRight size={14} className="profile-xp-line-chevron" aria-hidden="true" />
       </button>
 
-      {/* Main Profile Info Header */}
-      <div className="ios-profile-info-header">
-        <div className="ios-profile-avatar-outer-wrap">
-          <div className="ios-profile-avatar-circle" onClick={handleOpenEdit} title="Edit Profile Details">
-            <img 
-              src={avatar} 
-              alt={`${fullName} Profile`} 
-              className="ios-profile-img"
-            />
-            {/* Camera hover overlay */}
-            <div className="ios-profile-avatar-overlay">
-              <Camera size={18} />
-            </div>
-            {/* Green Online Indicator */}
-            <div className="ios-online-indicator-badge" />
-          </div>
-        </div>
-
-        <div className="ios-profile-details">
-          <div className="ios-profile-name-row">
-            <h2 className="ios-profile-fullname">{fullName}</h2>
-            {/* Verification Badge */}
-            <div className="ios-verify-badge-badge" title="Verified User">
-              <svg viewBox="0 0 24 24" className="ios-verify-check" fill="currentColor">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-              </svg>
-            </div>
-          </div>
-          <span className="ios-profile-username">@{username}</span>
-          <p className="ios-profile-bio">{bio}</p>
-          
-          <div className="ios-profile-meta-row">
-            <div className="ios-profile-meta-item">
-              <MapPin size={13} className="ios-meta-icon" />
-              <span>{location}</span>
-            </div>
-            <div className="ios-profile-meta-item">
-              <Calendar size={13} className="ios-meta-icon" />
-              <span>Joined Feb 2026</span>
-            </div>
-          </div>
-        </div>
+      {/* Tabs */}
+      <div className="profile-tabs">
+        {(['posts', 'events', 'achievements', 'saved'] as TabType[]).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={`profile-tab ${activeTab === tab ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        ))}
       </div>
 
-      {/* Social Stats Pill glass card */}
-      <div className="ios-stats-glass-card">
-        <button type="button" className="ios-stat-item-btn" onClick={() => handleStatClick('Following')}>
-          <Users size={18} className="ios-stat-icon icon-blue" />
-          <span className="ios-stat-value">{followingCount}</span>
-          <span className="ios-stat-label">Following</span>
-        </button>
-
-        <button type="button" className="ios-stat-item-btn" onClick={() => handleStatClick('Followers')}>
-          <Users size={18} className="ios-stat-icon icon-pink" />
-          <span className="ios-stat-value">{followersCount}</span>
-          <span className="ios-stat-label">Followers</span>
-        </button>
-
-        <button type="button" className="ios-stat-item-btn" onClick={() => handleStatClick('Events')}>
-          <Calendar size={18} className="ios-stat-icon icon-purple" />
-          <span className="ios-stat-value">{eventsCount}</span>
-          <span className="ios-stat-label">Events</span>
-        </button>
-
-        <button type="button" className="ios-stat-item-btn" onClick={() => handleStatClick('Badges')}>
-          <Award size={18} className="ios-stat-icon icon-yellow" />
-          <span className="ios-stat-value">{badgesCount}</span>
-          <span className="ios-stat-label">Badges</span>
-        </button>
-      </div>
-
-      {/* Action Buttons Row */}
-      <div className="ios-action-buttons-row">
-        <button 
-          type="button" 
-          className="ios-profile-btn ios-btn-white"
-          onClick={handleOpenEdit}
-        >
-          <UserIcon size={14} />
-          <span>Edit Profile</span>
-        </button>
-
-        <button 
-          type="button" 
-          className="ios-profile-btn ios-btn-blue"
-          onClick={() => setIsShareModalOpen(true)}
-        >
-          <Share2 size={14} />
-          <span>Share Profile</span>
-        </button>
-      </div>
-
-      {/* Achievements Horizontal Section */}
-      <div className="ios-achievements-scroller-wrap">
-        <div className="ios-achievements-scroll-content">
-          <div className="ios-badge-card card-yellow">
-            <div className="ios-badge-icon-bg">
-              <Trophy size={18} />
-            </div>
-            <span className="ios-badge-name">Event Champion</span>
-          </div>
-
-          <div className="ios-badge-card card-green">
-            <div className="ios-badge-icon-bg">
-              <Target size={18} />
-            </div>
-            <span className="ios-badge-name">Community Builder</span>
-          </div>
-
-          <div className="ios-badge-card card-blue">
-            <div className="ios-badge-icon-bg">
-              <Users size={18} />
-            </div>
-            <span className="ios-badge-name">Sports Enthusiast</span>
-          </div>
-
-          <div className="ios-badge-card card-purple">
-            <div className="ios-badge-icon-bg">
-              <Award size={18} />
-            </div>
-            <span className="ios-badge-name">Entertainment Explorer</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Profile Tab Control */}
-      <div className="ios-profile-tab-control">
-        <button 
-          type="button" 
-          className={`ios-profile-tab-btn ${activeTab === 'posts' ? 'active' : ''}`}
-          onClick={() => setActiveTab('posts')}
-        >
-          <Grid size={16} />
-          <span>Posts</span>
-        </button>
-
-        <button 
-          type="button" 
-          className={`ios-profile-tab-btn ${activeTab === 'events' ? 'active' : ''}`}
-          onClick={() => setActiveTab('events')}
-        >
-          <Calendar size={16} />
-          <span>Events</span>
-        </button>
-
-        <button 
-          type="button" 
-          className={`ios-profile-tab-btn ${activeTab === 'badges' ? 'active' : ''}`}
-          onClick={() => setActiveTab('badges')}
-        >
-          <Award size={16} />
-          <span>Badges</span>
-        </button>
-
-        <button 
-          type="button" 
-          className={`ios-profile-tab-btn ${activeTab === 'saved' ? 'active' : ''}`}
-          onClick={() => setActiveTab('saved')}
-        >
-          <Bookmark size={16} />
-          <span>Saved</span>
-        </button>
-      </div>
-
-      {/* Profile Tab Viewport */}
-      <div className="ios-profile-tab-viewport">
+      {/* Tab content */}
+      <div className="profile-tab-body">
         {activeTab === 'posts' && (
-          <div className="ios-activity-feed-list animate-fadeIn">
-            {/* Show custom dynamically updated tags summary if they exist */}
-            <div className="ios-badge-card" style={{ padding: '12px 18px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, width: '100%', cursor: 'default' }}>
-              <span style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: 0.5, fontWeight: 700 }}>Custom Selected Tags</span>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                {sports.map(s => (
-                  <span key={s} style={{ background: 'var(--bg-badge)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', fontSize: 11, padding: '3px 8px', borderRadius: 999 }}>🏏 {s}</span>
-                ))}
-                {entertainment.map(e => (
-                  <span key={e} style={{ background: 'rgba(233,220,190,0.15)', border: '1px solid var(--border-accent)', color: 'var(--text-primary)', fontSize: 11, padding: '3px 8px', borderRadius: 999 }}>🎵 {e}</span>
-                ))}
+          <div className="profile-base-feed animate-fadeIn">
+            {userPosts.length === 0 ? (
+              <div className="profile-empty">
+                <Grid size={32} strokeWidth={1.5} />
+                <h3>No posts yet</h3>
+                <p>
+                  {isOwnProfile
+                    ? 'No posts yet — share something in Base to get started.'
+                    : `${displayName} hasn't posted anything yet.`}
+                </p>
               </div>
-            </div>
-
-            {/* List Activities */}
-            {[
-              {
-                id: 1,
-                icon: '🏏',
-                title: 'Joined Cricket Tournament',
-                desc: 'Zenex Premier League 2024',
-                time: '2h ago',
-                thumbnail: 'https://images.unsplash.com/photo-1531415080290-bc98545ab3ef?auto=format&fit=crop&w=150&h=100&q=80',
-              },
-              {
-                id: 2,
-                icon: '🎤',
-                title: 'Attended Open Mic Night',
-                desc: 'The Habitat, Hyderabad',
-                time: '1d ago',
-                thumbnail: 'https://images.unsplash.com/photo-1516280440614-37939bbacd6a?auto=format&fit=crop&w=150&h=100&q=80',
-              },
-              {
-                id: 3,
-                icon: '🤝',
-                title: 'Connected with Rahul Sharma',
-                desc: 'Now you are connected',
-                time: '2d ago',
-                thumbnail: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=150&h=150&q=80',
-              },
-              {
-                id: 4,
-                icon: '⚽',
-                title: 'Created Football Event',
-                desc: 'Sunday Football Match',
-                time: '3d ago',
-                thumbnail: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=150&h=100&q=80',
-              }
-            ].map((item) => (
-              <div key={item.id} className="ios-activity-item-card">
-                <div className="ios-activity-left-side">
-                  <div className="ios-activity-emoji-icon">
-                    {item.icon}
-                  </div>
-                  <div className="ios-activity-info">
-                    <span className="ios-activity-title">{item.title}</span>
-                    <span className="ios-activity-desc">{item.desc}</span>
-                    <span className="ios-activity-time">{item.time}</span>
-                  </div>
-                </div>
-
-                <div className="ios-activity-right-side">
-                  <img src={item.thumbnail} alt={item.title} className="ios-activity-thumbnail" />
-                  <button type="button" className="ios-activity-options-btn" onClick={() => toast('Options clicked')}>
-                    <MoreHorizontal size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
+            ) : (
+              userPosts.map((post) => (
+                <HomePostCard
+                  key={post.id}
+                  post={post}
+                  onViewHostProfile={onViewProfile ?? (() => {})}
+                  onViewAuthorProfile={onViewProfile ?? (() => {})}
+                  onViewLocation={() => toast('Open Explore to view the event location')}
+                  onFollowChange={bumpStats}
+                  onPostDeleted={bumpStats}
+                />
+              ))
+            )}
           </div>
         )}
 
         {activeTab === 'events' && (
-          <div className="ios-profile-tab-empty animate-fadeIn">
-            <Calendar size={36} className="empty-state-icon" />
-            <h3>{eventsCount === 0 ? 'No events joined yet.' : `${eventsCount} Events Joined`}</h3>
-            {eventsCount === 0 ? (
-              <p>Host or join local cricket or entertainment gatherings to start tracking activities here.</p>
-            ) : null}
+          <div className="profile-events-blocks animate-fadeIn">
+            <div className="profile-block-card">
+              <div className="profile-block-head">
+                <span className="profile-block-title">Events attended</span>
+                <span className="profile-block-big-value">{eventsJoined.attendedTotal}</span>
+              </div>
+
+              {eventsJoined.attendedTotal === 0 ? (
+                <p className="profile-block-empty">
+                  Join and check in to events to start building your attendance record.
+                  {eventsJoined.registeredUpcoming > 0 &&
+                    ` You have ${eventsJoined.registeredUpcoming} upcoming registration${eventsJoined.registeredUpcoming > 1 ? 's' : ''}.`}
+                </p>
+              ) : (
+                <>
+                  {eventsJoined.registeredUpcoming > 0 && (
+                    <p className="profile-block-note">
+                      +{eventsJoined.registeredUpcoming} upcoming registered
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="profile-breakdown-toggle"
+                    onClick={() => setEventsBreakdownOpen((v) => !v)}
+                  >
+                    See breakdown
+                    <ChevronDown
+                      size={14}
+                      style={{
+                        transform: eventsBreakdownOpen ? 'rotate(180deg)' : 'none',
+                        transition: 'transform 0.2s',
+                      }}
+                    />
+                  </button>
+                  {eventsBreakdownOpen && (
+                    <div className="profile-breakdown-list">
+                      {eventsJoined.byCategory.map(({ category, count }) => (
+                        <div key={category} className="profile-breakdown-row">
+                          <span className="profile-breakdown-cat">{category}</span>
+                          <div className="profile-breakdown-bar">
+                            <div
+                              className="profile-breakdown-bar-fill"
+                              style={{
+                                width: `${Math.round((count / eventsJoined.attendedTotal) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="profile-breakdown-count">{count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="profile-block-card">
+              <div className="profile-block-head">
+                <span className="profile-block-title">Hosting</span>
+                {hostingStats.hostedTotal > 0 && (
+                  <span className="profile-block-big-value">{hostingStats.hostedTotal}</span>
+                )}
+              </div>
+
+              {hostingStats.hostedTotal === 0 ? (
+                <p className="profile-block-empty">
+                  Host your first official event to start building your rating.
+                </p>
+              ) : (
+                <>
+                  <div className="profile-hosting-rating">
+                    <Star size={16} className="profile-hosting-star" fill="currentColor" />
+                    <span className="profile-hosting-avg">{hostingStats.avgRating.toFixed(1)}</span>
+                    <span className="profile-hosting-count">
+                      ({hostingStats.ratingCount} rating{hostingStats.ratingCount !== 1 ? 's' : ''})
+                    </span>
+                  </div>
+                  <div className="profile-hosted-list">
+                    {hostingStats.events.map(({ post, rating, ratingCount }) => (
+                      <div key={post.id} className="profile-hosted-row">
+                        <span className="profile-hosted-title">{post.eventTitle}</span>
+                        <span className="profile-hosted-rating">
+                          <Star size={11} fill="currentColor" /> {rating.toFixed(1)} ({ratingCount})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
 
-        {activeTab === 'badges' && (
-          <div className="ios-profile-tab-empty animate-fadeIn">
-            <Trophy size={36} className="empty-state-icon" />
-            <h3>{badgesCount === 0 ? 'No badges earned yet.' : `${badgesCount} Badges Earned`}</h3>
-            <p>{badgesCount === 0 ? 'Start participating in events to earn badges.' : 'Explore challenges around Hyderabad to unlock more achievements badges.'}</p>
+        {activeTab === 'achievements' && (
+          <div className="profile-achievements-feed animate-fadeIn">
+            {achievementWins.length === 0 ? (
+              <div className="profile-empty">
+                <Star size={32} strokeWidth={1.5} />
+                <h3>No achievements yet</h3>
+                <p>
+                  {isOwnProfile
+                    ? 'Win an official event to post your victory here.'
+                    : `${displayName} hasn't posted any official wins yet.`}
+                </p>
+              </div>
+            ) : (
+              achievementWins.map((win) => (
+                <article key={win.id} className="profile-win-card">
+                  <div className="profile-win-image-wrap">
+                    <img src={win.image} alt="" className="profile-win-image" loading="lazy" />
+                    <span className="profile-win-placement">{win.placement}</span>
+                  </div>
+                  <div className="profile-win-body">
+                    <div className="profile-win-meta">
+                      <span className="profile-win-official">Official Event</span>
+                      <span className="profile-win-date">{win.dateLabel}</span>
+                    </div>
+                    <h3 className="profile-win-title">{win.eventTitle}</h3>
+                    <p className="profile-win-caption">{win.caption}</p>
+                  </div>
+                </article>
+              ))
+            )}
           </div>
         )}
 
         {activeTab === 'saved' && (
-          <div className="ios-profile-tab-empty animate-fadeIn">
-            <Bookmark size={36} className="empty-state-icon" />
-            <h3>No Saved Items</h3>
-            <p>Save events, tournament layouts, or organizers' pages for offline access later.</p>
+          <div className="profile-empty animate-fadeIn">
+            <Bookmark size={32} strokeWidth={1.5} />
+            <h3>No saved items</h3>
+            <p>Save events or posts for quick access later.</p>
           </div>
         )}
+      </div>
       </div>
 
       {/* --------------------------------------------------
           EDIT PROFILE MODAL
           -------------------------------------------------- */}
-      {isEditModalOpen && (
+      {isOwnProfile && isEditModalOpen && (
         <div className="ios-drawer-overlay edit-profile-overlay" onClick={() => setIsEditModalOpen(false)}>
           <div className="ios-drawer-sheet edit-profile-sheet animate-slideUp" onClick={(e) => e.stopPropagation()}>
             <button className="ios-drawer-close-btn" onClick={() => setIsEditModalOpen(false)} aria-label="Close">
@@ -1194,8 +1389,14 @@ export const ProfileView: React.FC = () => {
                 <div className="ios-notification-item unread">
                   <div className="ios-notif-dot" />
                   <div className="ios-notif-info">
-                    <span className="ios-notif-text"><strong>Rahul Sharma</strong> sent you a connection request.</span>
+                    <span className="ios-notif-text"><strong>Rahul Sharma</strong> wants to Dab Up with you.</span>
                     <span className="ios-notif-time">2h ago</span>
+                  </div>
+                </div>
+                <div className="ios-notification-item">
+                  <div className="ios-notif-info">
+                    <span className="ios-notif-text"><strong>Neha Reddy</strong> started boosting you.</span>
+                    <span className="ios-notif-time">5h ago</span>
                   </div>
                 </div>
                 <div className="ios-notification-item">
@@ -1217,7 +1418,7 @@ export const ProfileView: React.FC = () => {
       )}
 
       {/* Apple Settings Bottom Modal Sheet Drawer */}
-      {isSettingsOpen && (
+      {isOwnProfile && isSettingsOpen && (
         <div className="ios-drawer-overlay" onClick={() => setIsSettingsOpen(false)}>
           <div className="ios-drawer-sheet animate-slideUp" onClick={(e) => e.stopPropagation()}>
             <button className="ios-drawer-close-btn" onClick={() => setIsSettingsOpen(false)} aria-label="Close">
@@ -1325,8 +1526,61 @@ export const ProfileView: React.FC = () => {
         </div>
       )}
 
+      {/* Rank ladder modal */}
+      {isRankModalOpen && (
+        <div className="ios-drawer-overlay" onClick={() => setIsRankModalOpen(false)}>
+          <div className="ios-drawer-sheet animate-slideUp" onClick={(e) => e.stopPropagation()}>
+            <button className="ios-drawer-close-btn" onClick={() => setIsRankModalOpen(false)} aria-label="Close">
+              <X size={20} />
+            </button>
+            <div className="ios-drawer-body scrollable">
+              <h3 className="ios-drawer-title">Rank Ladder</h3>
+              <p className="ios-drawer-subtitle">
+                {rank.isMaxRank
+                  ? 'You reached the top of the ladder.'
+                  : `${(rank.xpTierSpan - rank.xpIntoTier).toLocaleString()} XP to ${rank.nextTier?.name}`}
+              </p>
+
+              <div className="profile-rank-ladder">
+                {RANK_TIERS.map((tier, index) => {
+                  const isCurrent = tier.id === rank.tier.id;
+                  const isPassed = index < rank.tierIndex;
+                  return (
+                    <div
+                      key={tier.id}
+                      className={`profile-rank-ladder-row ${isCurrent ? 'current' : ''} ${isPassed ? 'passed' : ''}`}
+                      style={{ '--rank-color': tier.color, '--rank-tint': tier.tint } as React.CSSProperties}
+                    >
+                      <RankBadge
+                        tierId={tier.id}
+                        size={48}
+                        className={`profile-rank-ladder-badge-img ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''}`}
+                      />
+                      <div className="profile-rank-ladder-info">
+                        <span className="profile-rank-ladder-name">
+                          {index + 1}. {tier.name}
+                          {isCurrent && <span className="profile-rank-you-tag">YOU</span>}
+                        </span>
+                        <span className="profile-rank-ladder-tagline">
+                          {tier.basis} · {tier.vibe}
+                        </span>
+                      </div>
+                      <span className="profile-rank-ladder-xp">
+                        {tier.minXp.toLocaleString()}+ XP
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Premium Membership Modal */}
-      <MembershipModal isOpen={isMembershipOpen} onClose={() => setIsMembershipOpen(false)} />
+      {isOwnProfile && (
+        <MembershipModal isOpen={isMembershipOpen} onClose={() => setIsMembershipOpen(false)} />
+      )}
     </div>
   );
 };

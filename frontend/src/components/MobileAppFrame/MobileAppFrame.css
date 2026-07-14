@@ -141,12 +141,6 @@
   transform: translateX(-50%);
 }
 
-.mobile-app-mode .zenex-header {
-  display: flex !important;
-  padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-}
-
 .mobile-app-mode .sidebar-toggle-btn {
   display: none !important;
 }
@@ -158,7 +152,8 @@ html.zenex-mobile-app .zenex-layout-grid,
 html.zenex-mobile-app .zenex-layout-grid.sidebar-expanded,
 html.zenex-mobile-app .zenex-layout-grid.sidebar-collapsed {
   grid-template-columns: 1fr !important;
-  padding: 16px 16px calc(var(--nav-height) + env(safe-area-inset-bottom, 0px) + 16px) !important;
+  /* Bottom nav clearance lives inside the scrolling main panel, not here */
+  padding: 16px 16px 0 !important;
   max-width: 100% !important;
   width: 100% !important;
 }
@@ -192,6 +187,11 @@ html.zenex-mobile-app .chat-layout-container {
   grid-template-columns: 1fr !important;
   height: auto !important;
   min-height: 480px;
+}
+
+.mobile-app-mode .chat-shell,
+html.zenex-mobile-app .chat-shell {
+  grid-template-columns: 1fr !important;
 }
 
 .mobile-app-mode .event-card {
@@ -261,6 +261,25 @@ html.zenex-mobile-app .zenex-main-panel {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   max-width: 100%;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
+  box-sizing: border-box;
+}
+
+/* Map tab manages its own bottom insets */
+.mobile-app-mode .explore-active .zenex-main-panel,
+html.zenex-mobile-app .explore-active .zenex-main-panel {
+  padding-bottom: 0;
+}
+
+/* Match home/discover monochrome shell on the phone screen */
+.mobile-app-screen:has(.home-active),
+.mobile-app-content:has(.home-active) {
+  background: #0a0a0a;
+}
+
+[data-theme='light'] .mobile-app-screen:has(.home-active),
+[data-theme='light'] .mobile-app-content:has(.home-active) {
+  background: #ffffff;
 }
 
 .mobile-app-mode .ios-auth-shell,
@@ -280,11 +299,6 @@ html.zenex-mobile-app .ios-auth-shell {
 html.zenex-mobile-app .ios-auth-container {
   width: 100%;
   padding: 24px 16px 40px;
-}
-
-html.zenex-mobile-app .zenex-header {
-  display: flex !important;
-  flex-shrink: 0;
 }
 
 html.zenex-mobile-app .bottom-navbar {
@@ -309,4 +323,33 @@ html.zenex-mobile-app #root > * {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* Lock phone layout at every viewport — desktop breakpoints must not leak in */
+html.zenex-mobile-app .zenex-layout-grid,
+html.zenex-mobile-app .zenex-layout-grid.sidebar-expanded,
+html.zenex-mobile-app .zenex-layout-grid.sidebar-collapsed {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: 1fr !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 16px 16px 0 !important;
+  gap: 16px !important;
+}
+
+html.zenex-mobile-app .zenex-sidebar,
+html.zenex-mobile-app .zenex-right-panel {
+  display: none !important;
+  visibility: hidden !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}
+
+html.zenex-mobile-app .sidebar-toggle-btn {
+  display: none !important;
+}
+
+html.zenex-mobile-app .bottom-navbar {
+  display: flex !important;
 }

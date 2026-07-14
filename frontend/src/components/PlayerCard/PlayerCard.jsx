@@ -51,8 +51,8 @@ function PlayerCard({ name, distance, sports = [], skillLevel, avatar, isOnline 
         {skillLevel}
       </span>
 
-      {/* Connect */}
-      <button className="player-card-connect">Connect</button>
+      {/* Dab Up */}
+      <button className="player-card-connect">Dab Up</button>
     </div>
   );
 }

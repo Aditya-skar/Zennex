@@ -237,7 +237,7 @@ export const INITIAL_EVENTS: ExploreEvent[] = [
     description: 'Late-night badminton sessions with timed match rotations.',
     coordinates: [17.4435, 78.3772],
     attendees: 20,
-    image: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80',
+    image: 'https://images.unsplash.com/photo-1620595435019-9d5d14e54fe0?auto=format&fit=crop&w=600&q=80',
     organizerId: 'org-sneha',
   },
   {
@@ -345,6 +345,141 @@ export const INITIAL_EVENTS: ExploreEvent[] = [
     image: 'https://images.unsplash.com/photo-1535295972055-1c7624482085?auto=format&fit=crop&w=600&q=80',
     organizerId: 'org-ananya',
   },
+  {
+    id: 'evt-yoga',
+    title: 'Sunset Yoga Flow',
+    category: 'Yoga',
+    mainCategory: 'Sports',
+    date: 'Tue, July 8',
+    time: '06:30 PM',
+    venue: 'KBR National Park Lawn',
+    location: 'KBR National Park, Jubilee Hills',
+    description: 'Open-air vinyasa flow as the sun sets. Mats provided, all levels welcome.',
+    coordinates: [17.4122, 78.407],
+    attendees: 38,
+    image: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-priya',
+  },
+  {
+    id: 'evt-volleyball',
+    title: 'Sand Volleyball League',
+    category: 'Volleyball',
+    mainCategory: 'Sports',
+    date: 'Sat, July 12',
+    time: '05:00 PM',
+    venue: 'Necklace Road Sports Arena',
+    location: 'Necklace Road, Hyderabad',
+    description: '4v4 beach volleyball under the floodlights. Teams register on arrival.',
+    coordinates: [17.4401, 78.465],
+    attendees: 28,
+    image: 'https://images.unsplash.com/photo-1612872085224-b08a92e221f6?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-rahul',
+  },
+  {
+    id: 'evt-hiking',
+    title: 'Gandipet Hill Trek',
+    category: 'Hiking',
+    mainCategory: 'Sports',
+    date: 'Sun, July 13',
+    time: '05:30 AM',
+    venue: 'Gandipet Lake Trailhead',
+    location: 'Gandipet, Hyderabad',
+    description: 'Moderate sunrise trek with lake views. Carry 1L water minimum.',
+    coordinates: [17.3885, 78.3012],
+    attendees: 34,
+    image: 'https://images.unsplash.com/photo-1551632811-561732b04104?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-vikram',
+  },
+  {
+    id: 'evt-crossfit',
+    title: 'CrossFit Community WOD',
+    category: 'CrossFit',
+    mainCategory: 'Sports',
+    date: 'Wed, July 16',
+    time: '06:00 AM',
+    venue: 'Financial District Gym',
+    location: 'Nanakramguda, Hyderabad',
+    description: 'Partner workout of the day. Scaled options for every fitness level.',
+    coordinates: [17.4196, 78.3403],
+    attendees: 26,
+    image: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-priya',
+  },
+  {
+    id: 'evt-pilates',
+    title: 'Reformer Pilates Class',
+    category: 'Pilates',
+    mainCategory: 'Sports',
+    date: 'Tue, July 15',
+    time: '07:30 AM',
+    venue: 'Core Studio, Jubilee Hills',
+    location: 'Jubilee Hills, Hyderabad',
+    description: 'Reformer-based Pilates focused on core strength and posture. All levels.',
+    coordinates: [17.4265, 78.4198],
+    attendees: 15,
+    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-priya',
+  },
+  {
+    id: 'evt-weightlifting',
+    title: 'Olympic Weightlifting Clinic',
+    category: 'Weightlifting',
+    mainCategory: 'Sports',
+    date: 'Thu, July 24',
+    time: '06:30 AM',
+    venue: 'Iron Temple Gym, Kondapur',
+    location: 'Kondapur, Hyderabad',
+    description: 'Coached snatch and clean & jerk technique session. Chalk provided.',
+    coordinates: [17.4622, 78.3578],
+    attendees: 12,
+    image: 'https://images.unsplash.com/photo-1534368959876-26bf04f2c947?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-arjun',
+  },
+  {
+    id: 'evt-bodybuilding',
+    title: 'Bodybuilding Pump Session',
+    category: 'Bodybuilding',
+    mainCategory: 'Sports',
+    date: 'Sat, July 26',
+    time: '05:00 PM',
+    venue: 'Muscle Factory, Madhapur',
+    location: 'Madhapur, Hyderabad',
+    description: 'Hypertrophy-focused group lift — chest & back day. Spotters on hand.',
+    coordinates: [17.4485, 78.3912],
+    attendees: 20,
+    image: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-arjun',
+  },
+  {
+    id: 'evt-calisthenics',
+    title: 'Calisthenics Park Workout',
+    category: 'Calisthenics',
+    mainCategory: 'Sports',
+    date: 'Sun, July 20',
+    time: '07:00 AM',
+    venue: 'KBR Park Outdoor Bars',
+    location: 'Jubilee Hills, Hyderabad',
+    description: 'Bodyweight training on bars and rings — pull-ups, dips, muscle-ups. All levels.',
+    coordinates: [17.4122, 78.407],
+    attendees: 19,
+    image: 'https://images.unsplash.com/photo-1598971639058-fab3c3109a00?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-vikram',
+  },
+  {
+    id: 'evt-liveband',
+    title: 'Indie Live Band Night',
+    category: 'Music',
+    mainCategory: 'Entertainment',
+    date: 'Thu, July 17',
+    time: '08:30 PM',
+    venue: 'The Park, Somajiguda',
+    location: 'Somajiguda, Hyderabad',
+    description: 'Three local indie acts back-to-back. Early bird entry before 8.',
+    coordinates: [17.4234, 78.4578],
+    attendees: 110,
+    image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=600&q=80',
+    organizerId: 'org-dj-kiran',
+  },
 ];
 
 const INITIAL_EVENT_BY_ID = Object.fromEntries(
@@ -371,9 +506,36 @@ export function normalizeExploreEvent(
 export const EXPLORE_EVENTS_KEY = 'zenex-explore-events-v4';
 export const EXPLORE_EVENTS_CHANGED_EVENT = 'zenex-explore-events-changed';
 
+/** Demo events removed from the product – strip from localStorage too. */
+const REMOVED_EVENT_IDS = new Set([
+  'evt-rugby',
+  'evt-tabletennis',
+  'evt-boxing',
+  'evt-cycling',
+  'evt-golf',
+  'evt-karaoke',
+  'evt-comedy',
+  'evt-art',
+  'evt-food',
+  'evt-esports',
+  'evt-dance',
+  'evt-photo',
+]);
+
+function withoutRemovedEvents(events: ExploreEvent[]): ExploreEvent[] {
+  return events.filter((event) => !REMOVED_EVENT_IDS.has(event.id));
+}
+
 /** Persist a newly created event so both Explore and Home stay in sync. */
 export function appendExploreEvent(event: ExploreEvent): void {
   const next = [...loadExploreEvents(), event];
+  localStorage.setItem(EXPLORE_EVENTS_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(EXPLORE_EVENTS_CHANGED_EVENT));
+}
+
+/** Remove an event from the map (e.g. when the user deletes their post). */
+export function removeExploreEvent(eventId: string): void {
+  const next = loadExploreEvents().filter((event) => event.id !== eventId);
   localStorage.setItem(EXPLORE_EVENTS_KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent(EXPLORE_EVENTS_CHANGED_EVENT));
 }
@@ -385,7 +547,7 @@ export function loadExploreEvents(): ExploreEvent[] {
   try {
     const parsed = JSON.parse(saved) as Array<Partial<ExploreEvent> & Pick<ExploreEvent, 'id'>>;
     if (!Array.isArray(parsed) || parsed.length === 0) return INITIAL_EVENTS;
-    const loaded = parsed.map(normalizeExploreEvent);
+    const loaded = withoutRemovedEvents(parsed.map(normalizeExploreEvent));
     return mergeSeedEvents(loaded);
   } catch {
     return INITIAL_EVENTS;
@@ -403,7 +565,9 @@ export function mergeSeedEvents(loaded: ExploreEvent[]): ExploreEvent[] {
     (seed) => !refreshed.some((event) => event.id === seed.id)
   );
 
-  return missingSeeds.length > 0 ? [...refreshed, ...missingSeeds] : refreshed;
+  return withoutRemovedEvents(
+    missingSeeds.length > 0 ? [...refreshed, ...missingSeeds] : refreshed
+  );
 }
 
 export type LocationEventGroup = {

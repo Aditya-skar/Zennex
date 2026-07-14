@@ -26,6 +26,14 @@ html, body, #root {
   padding: 0;
 }
 
+html.zenex-mobile-app,
+html.zenex-mobile-app body,
+html.zenex-mobile-app #root {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: var(--font-family);
   font-size: var(--font-base);
