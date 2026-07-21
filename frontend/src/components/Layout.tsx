@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Navbar, TabType } from './Navbar';
+import { Navbar, TabType, MapEventScope } from './Navbar';
 import { useTheme } from '../themeContext';
 import ProfileView from './profile/ProfileView';
 import { ME_AUTHOR_ID } from './profile/profileData';
@@ -40,11 +40,19 @@ import {
   USER_POSTS_CHANGED_EVENT,
   type CreateEventPayload,
 } from './HomeFeed/publishContent';
+import { logout } from '../api';
 import './Layout.css';
 
 export const Layout: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [mapEventScope, setMapEventScope] = useState<MapEventScope>(() => {
+    try {
+      return localStorage.getItem('zenex-map-event-scope') === 'private' ? 'private' : 'public';
+    } catch {
+      return 'public';
+    }
+  });
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -110,6 +118,7 @@ export const Layout: React.FC = () => {
   const [feedVersion, setFeedVersion] = useState(0);
   const [isHomeCreateOpen, setIsHomeCreateOpen] = useState(false);
   const [chatCreateGroupOpen, setChatCreateGroupOpen] = useState(false);
+  const [pendingChatId, setPendingChatId] = useState<string | null>(null);
   const bumpFeed = () => setFeedVersion((v) => v + 1);
 
   useEffect(() => {
@@ -126,6 +135,10 @@ export const Layout: React.FC = () => {
     if (activeTab === 'home') bumpFeed();
     if (activeTab !== 'chat') setChatCreateGroupOpen(false);
   }, [activeTab]);
+
+  useEffect(() => {
+    localStorage.setItem('zenex-map-event-scope', mapEventScope);
+  }, [mapEventScope]);
 
   const feed = useMemo(() => buildFeed([...loadUserPosts(), ...HOME_FEED_POSTS]), [feedVersion]);
 
@@ -150,8 +163,7 @@ export const Layout: React.FC = () => {
 
   const handleLogout = () => {
     setIsSettingsOpen(false);
-    localStorage.removeItem('zenex-auth');
-    navigate('/login');
+    void logout().then(() => navigate('/login'));
   };
 
   const handleSidebarToggle = () => {
@@ -166,6 +178,8 @@ export const Layout: React.FC = () => {
   return (
     <div
       className={`zenex-app-shell ${activeTab === 'explore' ? 'explore-active' : ''} ${
+        activeTab === 'chat' ? 'chat-active' : ''
+      } ${
         activeTab === 'home' || activeTab === 'discover' || activeTab === 'chat' || activeTab === 'profile'
           ? 'home-active'
           : ''
@@ -174,13 +188,21 @@ export const Layout: React.FC = () => {
       {/* Fixed Header — hidden on Profile and Explore */}
       {activeTab !== 'explore' && activeTab !== 'profile' && (
         <header className="zenex-header">
-          <div className="zenex-brand-group">
-            <div className="zenex-logo-pill" onClick={() => handleTabChange('home')} style={{ cursor: 'pointer' }}>
-              <img src="/logo.png" alt="SIMSOR" className="header-logo-img" />
-            </div>
-            <div>
-              <p className="zenex-app-title" onClick={() => handleTabChange('home')} style={{ cursor: 'pointer' }}>SIMSOR</p>
-            </div>
+          <div className="zenex-header-start" aria-hidden="true" />
+
+          <div className="zenex-header-center">
+            <p
+              className="zenex-app-title"
+              onClick={() => handleTabChange('home')}
+              style={{ cursor: 'pointer' }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') handleTabChange('home');
+              }}
+            >
+              SIMSOR
+            </p>
           </div>
 
           <div className="zenex-header-actions">
@@ -200,7 +222,7 @@ export const Layout: React.FC = () => {
                 onClick={() => setChatCreateGroupOpen(true)}
                 aria-label="Create group chat"
               >
-                <Plus size={22} strokeWidth={2.5} />
+                <Plus size={20} strokeWidth={2.5} />
               </button>
             ) : (
               <>
@@ -210,7 +232,7 @@ export const Layout: React.FC = () => {
                   onClick={() => setIsNotificationsOpen(true)}
                   aria-label="Notifications"
                 >
-                  <Bell size={20} />
+                  <Bell size={19} />
                   <span className="red-badge-dot">3</span>
                 </button>
 
@@ -220,7 +242,7 @@ export const Layout: React.FC = () => {
                     onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                     aria-label="Settings"
                   >
-                    <Settings size={20} />
+                    <Settings size={19} />
                   </button>
                   {isSettingsOpen && (
                     <>
@@ -388,6 +410,7 @@ export const Layout: React.FC = () => {
               onViewOrganizerProfile={handleViewOrganizerProfile}
               focusTarget={exploreFocus}
               onFocusHandled={() => setExploreFocus(null)}
+              mapEventScope={mapEventScope}
             />
           )}
 
@@ -469,6 +492,8 @@ export const Layout: React.FC = () => {
                 feedPosts={feed}
                 createGroupOpen={chatCreateGroupOpen}
                 onCreateGroupOpenChange={setChatCreateGroupOpen}
+                initialChatId={pendingChatId}
+                onInitialChatConsumed={() => setPendingChatId(null)}
               />
             </div>
           )}
@@ -480,6 +505,10 @@ export const Layout: React.FC = () => {
                 userId={viewingProfileId}
                 onViewProfile={handleViewOrganizerProfile}
                 onBack={() => setViewingProfileId(null)}
+                onOpenChat={(chatId) => {
+                  setPendingChatId(chatId);
+                  setActiveTab('chat');
+                }}
               />
             </div>
           )}
@@ -714,7 +743,12 @@ export const Layout: React.FC = () => {
       )}
 
       {/* Bottom Navigation Bar (Visible on Mobile <768px) */}
-      <Navbar activeTab={activeTab} setActiveTab={handleTabChange} />
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={handleTabChange}
+        mapEventScope={mapEventScope}
+        onMapEventScopeChange={setMapEventScope}
+      />
 
       {/* Premium Membership Modal */}
       <MembershipModal isOpen={isMembershipOpen} onClose={() => setIsMembershipOpen(false)} />

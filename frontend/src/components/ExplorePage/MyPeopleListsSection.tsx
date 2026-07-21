@@ -101,7 +101,8 @@ export const MyPeopleListsSection: React.FC = () => {
     <section className="create-event-section create-event-section--lists">
       <h4 className="create-event-section-title">My lists</h4>
       <p className="field-hint">
-        Group people you&apos;ve connected with. Long-press a list to edit members.
+        Group people you&apos;ve Dabbed Up with. Use these lists when creating invite-only events
+        for the Mates map.
       </p>
 
       <div className="people-lists-row">

@@ -1,7 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_API_URL: string;
+  /** Set when backend is ready — empty keeps local mocks. */
+  readonly VITE_API_URL?: string;
 }
 
 interface ImportMeta {

@@ -157,7 +157,7 @@ body {
   height: 100% !important;
 }
 
-/* Fullscreen Map-First Container */
+/* Fullscreen Map-First Container – positioning context for all map overlays */
 .explore-container-fullscreen {
   position: absolute;
   top: 0;
@@ -168,6 +168,7 @@ body {
   height: 100%;
   overflow: hidden;
   background-color: var(--explore-bg);
+  isolation: isolate;
 }
 
 /* Map Hero stretches edge-to-edge */
@@ -201,25 +202,37 @@ body {
   --explore-ui-gap: 18px;
   --explore-bottom-nav-inset: 14px;
   --explore-bottom-nav-height: 56px;
+  --explore-bottom-nav-stack-extra: 0px;
   --explore-bottom-tools-gap: 12px;
   --explore-map-tool-size: 56px;
   --explore-zoom-pill-width: 38px;
   --explore-zoom-pill-height: var(--explore-map-tool-size);
   --explore-above-nav-bottom: calc(
     env(safe-area-inset-bottom, 0px) + var(--explore-bottom-nav-inset) + var(--explore-bottom-nav-height) +
-      var(--explore-bottom-tools-gap)
+      var(--explore-bottom-nav-stack-extra) + var(--explore-bottom-tools-gap)
   );
 }
 
-/* TOP-LEFT FILTER BAR */
+.zenex-app-shell.explore-active {
+  --explore-bottom-nav-stack-extra: 34px;
+}
+
+/* TOP-LEFT FILTER BAR – anchored to map container (not viewport) */
 .explore-filter-bar {
-  position: fixed;
-  top: 12px;
+  position: absolute;
+  top: calc(var(--phone-status-offset, 0px) + 10px);
   left: 12px;
-  right: calc(var(--explore-pill-width) + var(--explore-pill-inset) + var(--explore-ui-gap));
   z-index: 1000;
   pointer-events: auto;
   touch-action: manipulation;
+  /* Same footprint for Sports and Entertainment (clear of right control pill) */
+  width: calc(
+    100% - 12px - var(--explore-pill-width) - var(--explore-pill-inset) - var(--explore-ui-gap)
+  );
+  max-width: calc(
+    100% - 12px - var(--explore-pill-width) - var(--explore-pill-inset) - var(--explore-ui-gap)
+  );
+  box-sizing: border-box;
 }
 
 .explore-filter-main {
@@ -228,6 +241,7 @@ body {
   align-items: stretch;
   gap: 5px;
   width: 100%;
+  min-width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   background: var(--explore-glass-bg);
@@ -378,6 +392,23 @@ body {
   transform: scale(0.95);
 }
 
+/* Profile interest recommendations – soft accent ring so they read as “for you” */
+.explore-filter-chip--interest:not(.active) {
+  border-color: color-mix(in srgb, #7c5cff 45%, var(--explore-border));
+  background: color-mix(in srgb, #7c5cff 12%, var(--explore-card));
+  font-weight: 600;
+}
+
+.explore-filter-bar--sports .explore-filter-chip--interest:not(.active) {
+  border-color: color-mix(in srgb, #22c55e 40%, var(--explore-border));
+  background: color-mix(in srgb, #22c55e 10%, var(--explore-card));
+}
+
+.explore-filter-bar--entertainment .explore-filter-chip--interest:not(.active) {
+  border-color: color-mix(in srgb, #f59e0b 45%, var(--explore-border));
+  background: color-mix(in srgb, #f59e0b 12%, var(--explore-card));
+}
+
 /* "+ More" / "Less" toggle chip – dashed accent to read as an action */
 .explore-filter-chip--more {
   background: transparent;
@@ -426,8 +457,14 @@ body {
   }
 
   .explore-filter-bar {
-    top: 10px;
+    top: calc(var(--phone-status-offset, 0px) + 8px);
     left: 10px;
+    width: calc(
+      100% - 10px - var(--explore-pill-width) - var(--explore-pill-inset) - var(--explore-ui-gap)
+    );
+    max-width: calc(
+      100% - 10px - var(--explore-pill-width) - var(--explore-pill-inset) - var(--explore-ui-gap)
+    );
   }
 
   .explore-filter-chip {
@@ -437,10 +474,10 @@ body {
   }
 }
 
-/* FLOATING VERTICAL CONTROL BAR – same dark glass island as filter bar */
+/* FLOATING VERTICAL CONTROL BAR – anchored to map container (not viewport) */
 .vertical-control-pill {
-  position: fixed;
-  top: 12px;
+  position: absolute;
+  top: calc(var(--phone-status-offset, 0px) + 10px);
   right: var(--explore-pill-inset);
   z-index: 1001;
   display: flex;
@@ -465,7 +502,7 @@ body {
 @media (max-width: 480px) {
   .vertical-control-pill {
     right: var(--explore-pill-inset);
-    top: 10px;
+    top: calc(var(--phone-status-offset, 0px) + 8px);
   }
 }
 
@@ -531,7 +568,7 @@ body {
 
 /* Zennex logo + create + (bottom-left stack), above nav island */
 .explore-map-bottom-left-stack {
-  position: fixed;
+  position: absolute;
   left: calc(env(safe-area-inset-left, 0px) + var(--explore-bottom-nav-inset));
   bottom: var(--explore-above-nav-bottom);
   z-index: 1090;
@@ -787,7 +824,7 @@ body {
 
 /* Floating map zoom controls – bottom-right, tall vertical pill (shape unchanged) */
 .ios-zoom-controls.explore-map-zoom-controls {
-  position: fixed;
+  position: absolute;
   right: calc(env(safe-area-inset-right, 0px) + var(--explore-bottom-nav-inset));
   bottom: var(--explore-above-nav-bottom);
   z-index: 1090;
@@ -834,7 +871,7 @@ body {
 }
 
 .explore-map-locate-btn {
-  position: fixed;
+  position: absolute;
   right: calc(env(safe-area-inset-right, 0px) + var(--explore-bottom-nav-inset));
   bottom: calc(var(--explore-above-nav-bottom) + var(--explore-zoom-pill-height) + 10px);
   z-index: 1095;
@@ -1917,6 +1954,28 @@ body {
   font-weight: 700;
   line-height: 18px;
   text-align: center;
+}
+
+.people-list-chip.is-selected {
+  border-color: rgba(124, 92, 255, 0.55);
+  background: rgba(124, 92, 255, 0.16);
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.22);
+}
+
+.invite-lists-picker {
+  margin-top: 12px;
+}
+
+.invite-lists-picker-hint {
+  margin-bottom: 8px;
+}
+
+.invite-lists-empty {
+  margin-top: 4px;
+}
+
+.invite-lists-row {
+  margin-top: 0;
 }
 
 .people-lists-empty {

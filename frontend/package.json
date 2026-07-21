@@ -1,7 +1,7 @@
 {
-  "name": "frontend",
+  "name": "simsor",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,15 +9,24 @@
     "build:mobile": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "icons:store": "node scripts/generate-store-icons.mjs",
     "cap:sync": "npm run build:mobile && npx cap sync",
+    "release:sync": "npm run icons:store && npm run build:mobile && npx cap sync",
+    "release:android": "npm run release:sync && cd android && .\\gradlew.bat bundleRelease",
     "cap:android": "npm run cap:sync && npx cap open android",
-    "cap:ios": "npm run cap:sync && npx cap open ios"
+    "cap:ios": "npm run cap:sync && npx cap open ios",
+    "cap:run:android": "npm run cap:sync && npx cap run android",
+    "cap:run:ios": "npm run cap:sync && npx cap run ios",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
     "@capacitor/ios": "^8.4.0",
+    "@capacitor/keyboard": "^8.0.5",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
     "@hookform/resolvers": "^5.4.0",

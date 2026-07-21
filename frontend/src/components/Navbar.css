@@ -20,6 +20,83 @@
   pointer-events: none;
 }
 
+.bottom-navbar-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.bottom-navbar-stack > * {
+  pointer-events: auto;
+}
+
+.navbar-scope-island {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(22, 22, 24, 0.62);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.26),
+    0 2px 6px rgba(0, 0, 0, 0.14);
+}
+
+.navbar-scope-btn {
+  min-width: 58px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.48);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.navbar-scope-btn:hover:not(.active) {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.navbar-scope-btn.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 1px 6px rgba(255, 255, 255, 0.06);
+}
+
+.navbar-scope-btn:active {
+  transform: scale(0.96);
+}
+
+/* Hide nav island while profile sheets are open — must beat zenex-mobile-app flex rules */
+html.zenex-mobile-app.profile-sheet-open .bottom-navbar,
+html.profile-sheet-open .bottom-navbar,
+html.zenex-mobile-app.profile-sheet-open .bottom-navbar-stack,
+html.profile-sheet-open .bottom-navbar-stack,
+html.zenex-mobile-app.profile-sheet-open .navbar-island,
+html.profile-sheet-open .navbar-island,
+html.zenex-mobile-app.profile-sheet-open .navbar-scope-island,
+html.profile-sheet-open .navbar-scope-island,
+html.zenex-mobile-app.edit-profile-open .bottom-navbar,
+html.edit-profile-open .bottom-navbar {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .navbar-island {
   display: flex;
   align-items: center;
@@ -86,6 +163,58 @@
 
 .nav-icon {
   flex-shrink: 0;
+}
+
+/* Discover – brand logo tab */
+.nav-item-surface--logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+.nav-item.active .nav-item-surface--logo {
+  width: 46px;
+  height: 46px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 16px rgba(124, 92, 255, 0.35),
+    0 0 28px rgba(255, 77, 141, 0.2);
+}
+
+.nav-logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  flex-shrink: 0;
+  animation: nav-logo-spin 12s linear infinite, nav-logo-pulse 2.4s ease-in-out infinite;
+  filter: drop-shadow(0 0 6px rgba(233, 220, 190, 0.35));
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.nav-item--logo:hover .nav-logo-img,
+.nav-item--logo.active .nav-logo-img {
+  width: 30px;
+  height: 30px;
+  filter: drop-shadow(0 0 10px rgba(233, 220, 190, 0.55));
+  animation: nav-logo-spin 6s linear infinite, nav-logo-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes nav-logo-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes nav-logo-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(124, 92, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(124, 92, 255, 0);
+  }
 }
 
 .nav-label {

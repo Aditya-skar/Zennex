@@ -69,7 +69,7 @@ type PinStyle = {
 
 const ICON_BASE = '/icons/3d';
 // Bump when icon images are replaced so browsers/PWA caches fetch fresh assets.
-const ICON_VERSION = '15';
+const ICON_VERSION = '18';
 const icon = (name: string) => `${ICON_BASE}/${name}.png?v=${ICON_VERSION}`;
 
 const PIN_STYLES: Record<string, PinStyle> = {
@@ -155,6 +155,22 @@ export function normalizeEventCategory(category: string): keyof typeof PIN_STYLE
 export function getEventPinStyle(category: string): PinStyle {
   const slug = normalizeEventCategory(category);
   return PIN_STYLES[slug] ?? PIN_STYLES.default;
+}
+
+export function getEventCategoryIconSrc(category: string): string {
+  return getEventPinStyle(category).iconSrc;
+}
+
+/** Icons with dark subjects that need inverting on dark map/chip discs (light theme). */
+export function isDarkSubjectPin(category: string): boolean {
+  const slug = getEventPinStyle(category).slug;
+  return slug === 'music';
+}
+
+export function getEventCategoryIconClassName(category: string): string {
+  return isDarkSubjectPin(category)
+    ? 'home-post-event-chip-category is-dark-subject'
+    : 'home-post-event-chip-category';
 }
 
 export function createEventMapPinHtml(

@@ -12,10 +12,7 @@ dist
 dist-ssr
 *.local
 .env
-
-# Capacitor native build artifacts (regenerate with npm run cap:sync)
-android/
-ios/
+.env.*.local
 
 # Editor directories and files
 .vscode/*
@@ -27,3 +24,19 @@ ios/
 *.njsproj
 *.sln
 *.sw?
+
+# Native build caches (keep android/ + ios/ project folders after `cap add`)
+android/app/build/
+android/.gradle/
+android/build/
+android/local.properties
+ios/App/Pods/
+ios/App/build/
+ios/DerivedData/
+*.xcuserdata
+
+# Release signing
+*.keystore
+*.jks
+android/keystore.properties
+resources/

@@ -1,19 +1,44 @@
 {
-  "appId": "com.zenex.app",
-  "appName": "ZENEX",
+  "appId": "com.simsor.app",
+  "appName": "SIMSOR",
   "webDir": "dist",
+  "bundledWebRuntime": false,
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0B1020",
+    "buildOptions": {
+      "keystorePath": null,
+      "keystoreAlias": null
+    }
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#0B1020",
+    "preferredContentMode": "mobile",
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": true
   },
   "plugins": {
     "SplashScreen": {
       "launchAutoHide": true,
+      "launchShowDuration": 1200,
       "backgroundColor": "#0B1020",
-      "showSpinner": false
+      "showSpinner": false,
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP"
     },
     "StatusBar": {
       "style": "DARK",
-      "backgroundColor": "#0B1020"
+      "backgroundColor": "#0B1020",
+      "overlaysWebView": false
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
     }
   }
 }

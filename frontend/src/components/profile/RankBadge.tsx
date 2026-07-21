@@ -36,13 +36,18 @@ export function RankBadge({
   const style = {
     width: size,
     height: size,
+    '--badge-scale': tier.badgeScale,
+    '--badge-hero-scale': tier.badgeHeroScale,
+    '--badge-focus': tier.badgeFocus,
   } as React.CSSProperties;
+
+  const frameClass = `rank-badge--frame-${tier.badgeFrame}`;
 
   if (onClick) {
     return (
       <button
         type="button"
-        className={`rank-badge rank-badge--btn rank-badge--${tierId} ${className}`.trim()}
+        className={`rank-badge rank-badge--btn rank-badge--${tierId} ${frameClass} ${className}`.trim()}
         style={style}
         onClick={onClick}
         aria-label={label}
@@ -55,7 +60,7 @@ export function RankBadge({
 
   return (
     <span
-      className={`rank-badge rank-badge--${tierId} ${className}`.trim()}
+      className={`rank-badge rank-badge--${tierId} ${frameClass} ${className}`.trim()}
       style={style}
       title={label}
       aria-hidden={title ? undefined : true}

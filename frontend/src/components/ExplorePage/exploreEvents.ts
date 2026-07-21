@@ -26,6 +26,10 @@ export type ExploreEvent = {
   image: string;
   organizerId: string;
   gameAccess?: GameAccess;
+  /** People lists selected when publishing an invite-only event. */
+  inviteListIds?: string[];
+  /** Snapshot of invitee member IDs at publish time (also re-resolved from lists). */
+  invitedMemberIds?: string[];
 };
 
 export const EVENT_ORGANIZERS: EventOrganizer[] = [
@@ -132,6 +136,12 @@ export function getCurrentUserOrganizer(): EventOrganizer {
     location: localStorage.getItem('zenex-location') || DEFAULT_ME_ACCOUNT.location,
     eventsHosted: 0,
   };
+}
+
+/** Default community photo — creator's profile picture, not a stock image. */
+export function getDefaultCommunityAvatarForCreator(creatorId: string): string {
+  if (creatorId === ME_AUTHOR_ID) return getCurrentUserOrganizer().avatar;
+  return ORGANIZER_BY_ID[creatorId]?.avatar ?? DEFAULT_ME_ACCOUNT.avatar;
 }
 
 export const INITIAL_EVENTS: ExploreEvent[] = [
@@ -500,6 +510,8 @@ export function normalizeExploreEvent(
     ],
     organizerId: event.organizerId ?? fallback?.organizerId ?? 'org-rahul',
     gameAccess: event.gameAccess ?? fallback?.gameAccess ?? 'public',
+    inviteListIds: event.inviteListIds ?? fallback?.inviteListIds,
+    invitedMemberIds: event.invitedMemberIds ?? fallback?.invitedMemberIds,
   };
 }
 

@@ -20,6 +20,12 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import { SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES, createEventMapIcon } from './eventMapIcons';
 import type { GameAccess } from './exploreEvents';
 import MyPeopleListsSection from './MyPeopleListsSection';
+import {
+  loadPeopleLists,
+  resolveMemberIdsFromLists,
+  PEOPLE_LISTS_CHANGED_EVENT,
+  type PeopleList,
+} from '../HomeFeed/audienceLists';
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION =
@@ -92,6 +98,8 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
   const [mainCategory, setMainCategory] = useState<'Sports' | 'Entertainment'>('Sports');
   const [subCategory, setSubCategory] = useState('Cricket');
   const [gameAccess, setGameAccess] = useState<GameAccess>('public');
+  const [selectedInviteListIds, setSelectedInviteListIds] = useState<string[]>([]);
+  const [peopleLists, setPeopleLists] = useState<PeopleList[]>(() => loadPeopleLists());
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [venue, setVenue] = useState('');
@@ -109,6 +117,20 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
   const [joinCloseDate, setJoinCloseDate] = useState('');
   const [joinCloseTime, setJoinCloseTime] = useState('');
   const [createGroupChat, setCreateGroupChat] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const refreshLists = () => setPeopleLists(loadPeopleLists());
+    refreshLists();
+    window.addEventListener(PEOPLE_LISTS_CHANGED_EVENT, refreshLists);
+    return () => window.removeEventListener(PEOPLE_LISTS_CHANGED_EVENT, refreshLists);
+  }, [isOpen]);
+
+  const toggleInviteList = (listId: string) => {
+    setSelectedInviteListIds((prev) =>
+      prev.includes(listId) ? prev.filter((id) => id !== listId) : [...prev, listId],
+    );
+  };
 
   useEffect(() => {
     if (mainCategory === 'Sports') {
@@ -234,6 +256,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     setMainCategory('Sports');
     setSubCategory('Cricket');
     setGameAccess('public');
+    setSelectedInviteListIds([]);
     setDate('');
     setTime('');
     setVenue('');
@@ -271,6 +294,18 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
       }
     }
 
+    if (gameAccess === 'invite') {
+      if (selectedInviteListIds.length === 0) {
+        alert('Select at least one list for invite-only events.');
+        return;
+      }
+      const invitees = resolveMemberIdsFromLists(selectedInviteListIds);
+      if (invitees.length === 0) {
+        alert('Selected lists have no members yet. Add Dabbed Up people to a list in My lists below.');
+        return;
+      }
+    }
+
     let image = 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?auto=format&fit=crop&w=600&q=80';
     if (subCategory === 'Cricket') image = 'https://images.unsplash.com/photo-1531415080290-bc98545ab3ef?auto=format&fit=crop&w=600&q=80';
     else if (subCategory === 'Music' || subCategory === 'Clubbing') image = 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=600&q=80';
@@ -291,6 +326,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
       category: subCategory,
       mainCategory,
       gameAccess,
+      inviteListIds: gameAccess === 'invite' ? selectedInviteListIds : undefined,
       date,
       time,
       venue,
@@ -389,7 +425,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                 <button
                   type="button"
                   className={`game-access-option ${gameAccess === 'public' ? 'active' : ''}`}
-                  onClick={() => setGameAccess('public')}
+                  onClick={() => {
+                    setGameAccess('public');
+                    setSelectedInviteListIds([]);
+                  }}
                 >
                   <span className="game-access-icon">
                     <Globe size={18} />
@@ -413,6 +452,39 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                   </span>
                 </button>
               </div>
+
+              {gameAccess === 'invite' && (
+                <div className="invite-lists-picker">
+                  <p className="field-hint invite-lists-picker-hint">
+                    Choose lists for invite-only events on the <strong>Mates</strong> map. Public
+                    events from Dabbed Up people already show there too.
+                  </p>
+                  {peopleLists.length === 0 ? (
+                    <p className="field-hint invite-lists-empty">
+                      Create a list in <strong>My lists</strong> below, add Dabbed Up people, then
+                      select it here.
+                    </p>
+                  ) : (
+                    <div className="people-lists-row invite-lists-row">
+                      {peopleLists.map((list) => {
+                        const isSelected = selectedInviteListIds.includes(list.id);
+                        return (
+                          <button
+                            key={list.id}
+                            type="button"
+                            className={`people-list-chip ${isSelected ? 'is-selected' : ''}`}
+                            onClick={() => toggleInviteList(list.id)}
+                            aria-pressed={isSelected}
+                          >
+                            <span className="people-list-chip-name">{list.name}</span>
+                            <span className="people-list-chip-count">{list.memberIds.length}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
 
             <section className="create-event-section">

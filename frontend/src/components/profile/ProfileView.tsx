@@ -23,7 +23,8 @@ import {
   Link as LinkIcon,
   Sparkles,
   Star,
-  ChevronDown,
+  Users,
+  Plus,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { ThemeSwitch } from '../ThemeSwitch';
@@ -32,6 +33,7 @@ import { MembershipModal, getSavedPlan, PLAN_CHANGE_EVENT, PlanType } from '../M
 import HomePostCard from '../HomeFeed/HomePostCard';
 import { FEED_CHANGED_EVENT, isFollowing, toggleFollow } from '../HomeFeed/feedAlgorithm';
 import { USER_POSTS_CHANGED_EVENT } from '../HomeFeed/publishContent';
+import { saveProfile } from '../../api';
 import {
   DAB_UPS_CHANGED_EVENT,
   getAchievementWins,
@@ -39,6 +41,7 @@ import {
   getBoostingCount,
   getDabUpStatus,
   getDabUpsCount,
+  getDabbedUpPeople,
   getEventsJoinedStats,
   getHostingStats,
   getMemberEventsJoinedStats,
@@ -54,14 +57,32 @@ import {
 } from './profileData';
 import { RANK_TIERS } from './rankConfig';
 import { RankBadge } from './RankBadge';
+import {
+  createCommunity,
+  canUserCreateCommunity,
+  getCommunityAvatar,
+  getVisibleCommunitiesForProfile,
+  joinCommunity,
+  subscribeCommunities,
+  type Community,
+} from './communitiesStore';
 import './ProfileView.css';
 
-type TabType = 'posts' | 'events' | 'achievements' | 'saved';
+type TabType = 'posts' | 'events' | 'achievements' | 'saved' | 'communities';
+
+const TAB_LABELS: Record<TabType, string> = {
+  posts: 'Posts',
+  events: 'Events',
+  achievements: 'Achievements',
+  saved: 'Saved',
+  communities: 'Communities',
+};
 
 type ProfileViewProps = {
   userId?: string | null;
   onViewProfile?: (userId: string) => void;
   onBack?: () => void;
+  onOpenChat?: (chatId: string) => void;
 };
 
 // Taken usernames list for real-time validation mockup
@@ -71,6 +92,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   userId = null,
   onViewProfile,
   onBack,
+  onOpenChat,
 }) => {
   const isOwnProfile = isOwnProfileUser(userId);
   const profileUserId = isOwnProfile ? null : userId;
@@ -102,6 +124,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Modals state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isCreateCommunityOpen, setIsCreateCommunityOpen] = useState(false);
 
   // Dynamic Profile states synchronized with localStorage
   const [fullName, setFullName] = useState(() => localStorage.getItem('zenex-fullname') || 'Admin User');
@@ -215,6 +238,136 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Rank ladder modal
   const [isRankModalOpen, setIsRankModalOpen] = useState(false);
   const [eventsBreakdownOpen, setEventsBreakdownOpen] = useState(false);
+
+  // Communities
+  const [communities, setCommunities] = useState<Community[]>(() =>
+    getVisibleCommunitiesForProfile(profileUserId, isOwnProfile),
+  );
+  const [communityName, setCommunityName] = useState('');
+  const [communityDescription, setCommunityDescription] = useState('');
+  const [communityAvatar, setCommunityAvatar] = useState(avatar);
+  const [communityMemberIds, setCommunityMemberIds] = useState<string[]>([]);
+  const communityPhotoRef = useRef<HTMLInputElement>(null);
+
+  const dabbedPeople = React.useMemo(
+    () => (isCreateCommunityOpen ? getDabbedUpPeople() : []),
+    [isCreateCommunityOpen, dabUpsCount],
+  );
+
+  const resetCreateCommunityForm = () => {
+    setCommunityName('');
+    setCommunityDescription('');
+    setCommunityAvatar(avatar);
+    setCommunityMemberIds([]);
+  };
+
+  const toggleCommunityMember = (memberId: string) => {
+    setCommunityMemberIds((current) =>
+      current.includes(memberId)
+        ? current.filter((id) => id !== memberId)
+        : [...current, memberId],
+    );
+  };
+
+  const handleCommunityPhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setCommunityAvatar(reader.result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Hide bottom nav island while profile sheets are open
+  useEffect(() => {
+    const root = document.documentElement;
+    const hideNav = isEditModalOpen || isCreateCommunityOpen;
+    root.classList.toggle('profile-sheet-open', hideNav);
+    root.classList.toggle('create-community-open', isCreateCommunityOpen);
+    return () => {
+      root.classList.remove('profile-sheet-open');
+      root.classList.remove('create-community-open');
+    };
+  }, [isEditModalOpen, isCreateCommunityOpen]);
+
+  useEffect(() => subscribeCommunities(() => {
+    setCommunities(getVisibleCommunitiesForProfile(profileUserId, isOwnProfile));
+  }), [profileUserId, isOwnProfile]);
+
+  const handleCreateCommunity = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canUserCreateCommunity()) {
+      toast.error('You can only create one community for now');
+      setIsCreateCommunityOpen(false);
+      return;
+    }
+    const created = createCommunity({
+      name: communityName,
+      description: communityDescription,
+      avatar: communityAvatar,
+      memberIds: communityMemberIds,
+    });
+    if (!created) {
+      toast.error('Enter a community name');
+      return;
+    }
+    toast.success(`"${created.name}" created — chat is ready`);
+    setIsCreateCommunityOpen(false);
+    resetCreateCommunityForm();
+    onOpenChat?.(created.chatId);
+  };
+
+  const openCommunityChat = (chatId: string) => {
+    onOpenChat?.(chatId);
+  };
+
+  const handleCommunityClick = (community: Community) => {
+    if (!isOwnProfile) {
+      joinCommunity(community.id);
+    }
+    openCommunityChat(community.chatId);
+  };
+
+  // Hero avatar ↔ badge swap + long-press zoom
+  const [heroShowBadge, setHeroShowBadge] = useState(false);
+  const [heroActionMenuOpen, setHeroActionMenuOpen] = useState(false);
+  const [heroZoomView, setHeroZoomView] = useState<'avatar' | 'badge' | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (heroActionMenuOpen || heroZoomView) return undefined;
+    const id = window.setInterval(() => setHeroShowBadge((v) => !v), 3000);
+    return () => clearInterval(id);
+  }, [heroActionMenuOpen, heroZoomView]);
+
+  const clearHeroLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleHeroSwapPointerDown = () => {
+    clearHeroLongPress();
+    longPressTimerRef.current = window.setTimeout(() => {
+      setHeroActionMenuOpen(true);
+    }, 480);
+  };
+
+  const handleHeroSwapPointerUp = () => {
+    clearHeroLongPress();
+  };
+
+  const openHeroZoom = (view: 'avatar' | 'badge') => {
+    setHeroActionMenuOpen(false);
+    setHeroZoomView(view);
+  };
 
   // --------------------------------------------------
   // EDIT PROFILE TEMPORARY STATES
@@ -359,7 +512,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   // Save changes callback
-  const handleSaveChanges = (e: React.FormEvent) => {
+  const handleSaveChanges = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!tempFullName.trim()) {
@@ -378,33 +531,38 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (cropped) finalAvatar = cropped;
     }
 
-    // Persist profile
-    setFullName(tempFullName.trim());
-    setUsername(tempUsername.trim().toLowerCase());
-    setBio(tempBio);
-    setLocation(tempLocation.trim());
-    setAvatar(finalAvatar);
-    setSports(tempSports);
-    setEntertainment(tempEnt);
+    try {
+      const saved = await saveProfile({
+        fullName: tempFullName.trim(),
+        username: tempUsername.trim().toLowerCase(),
+        bio: tempBio,
+        location: tempLocation.trim(),
+        avatarUrl: finalAvatar,
+        sports: tempSports,
+        entertainment: tempEnt,
+      });
 
-    localStorage.setItem('zenex-fullname', tempFullName.trim());
-    localStorage.setItem('zenex-username', tempUsername.trim().toLowerCase());
-    localStorage.setItem('zenex-bio', tempBio);
-    localStorage.setItem('zenex-location', tempLocation.trim());
-    localStorage.setItem('zenex-avatar', finalAvatar);
-    localStorage.setItem('zenex-sports', JSON.stringify(tempSports));
-    localStorage.setItem('zenex-ent', JSON.stringify(tempEnt));
+      setFullName(saved.fullName);
+      setUsername(saved.username);
+      setBio(saved.bio);
+      setLocation(saved.location);
+      setAvatar(saved.avatarUrl);
+      setSports(saved.sports);
+      setEntertainment(saved.entertainment);
 
-    setIsEditModalOpen(false);
-    toast.success('Profile updated successfully', {
-      style: {
-        background: 'var(--bg-secondary)',
-        color: 'var(--text-primary)',
-        border: '1px solid var(--border-color)',
-        borderRadius: '12px',
-        fontFamily: 'var(--font-family)',
-      }
-    });
+      setIsEditModalOpen(false);
+      toast.success('Profile updated successfully', {
+        style: {
+          background: 'var(--bg-secondary)',
+          color: 'var(--text-primary)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '12px',
+          fontFamily: 'var(--font-family)',
+        }
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not save profile');
+    }
   };
 
   // --------------------------------------------------
@@ -708,55 +866,74 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <canvas ref={cropCanvasRef} style={{ display: 'none' }} />
 
       {/* Top half of the phone — identity hero */}
-      <div className="profile-top-half">
+      <div
+        className="profile-top-half"
+        style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
+      >
         <div className="profile-top-bar">
-          {isOwnProfile ? (
-            <span className="profile-top-side" aria-hidden="true" />
-          ) : (
-            <button type="button" className="profile-back-bar" onClick={onBack} aria-label="Back to your profile">
-              <ChevronLeft size={18} />
-              <span>{displayName}</span>
+          <div className="profile-top-bar-start">
+            {isOwnProfile ? (
+              <span className="profile-top-side" aria-hidden="true" />
+            ) : (
+              <button type="button" className="profile-back-bar" onClick={onBack} aria-label="Back to your profile">
+                <ChevronLeft size={18} />
+                <span>{displayName}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="profile-top-bar-center">
+            <p className="profile-top-handle" aria-label={`@${displayUsername}`}>
+              @{displayUsername}
+            </p>
+          </div>
+
+          <div className="profile-top-bar-end">
+            <button
+              type="button"
+              className="profile-top-share"
+              onClick={() => setIsShareModalOpen(true)}
+              aria-label="Share profile"
+            >
+              <Share2 size={18} />
             </button>
-          )}
-
-          {isOwnProfile && (
-            <p className="profile-app-title" aria-label="SIMSOR">SIMSOR</p>
-          )}
-
-          <button
-            type="button"
-            className="profile-top-share"
-            onClick={() => setIsShareModalOpen(true)}
-            aria-label="Share profile"
-          >
-            <Share2 size={18} />
-          </button>
+          </div>
         </div>
 
         <div className="profile-hero-wrap">
-        <section
-          className="profile-hero"
-          style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
-        >
+        <section className="profile-hero">
           <div className="profile-hero-content">
             <div className="profile-hero-head">
-              {isOwnProfile ? (
-                <button
-                  type="button"
-                  className="profile-avatar-btn"
-                  onClick={handleOpenEdit}
-                  aria-label="Edit profile photo"
-                >
-                  <img src={displayAvatar} alt={`${displayName} profile`} className="profile-avatar-img" />
-                  <span className="profile-avatar-edit">
-                    <Camera size={14} />
-                  </span>
-                </button>
-              ) : (
-                <div className="profile-avatar-btn profile-avatar-btn--static">
-                  <img src={displayAvatar} alt={`${displayName} profile`} className="profile-avatar-img" />
+              <div
+                className="profile-hero-swap"
+                style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
+                onPointerDown={handleHeroSwapPointerDown}
+                onPointerUp={handleHeroSwapPointerUp}
+                onPointerLeave={handleHeroSwapPointerUp}
+                onPointerCancel={handleHeroSwapPointerUp}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setHeroActionMenuOpen(true);
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label="Profile photo and rank badge. Long press to view."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setHeroActionMenuOpen(true);
+                  }
+                }}
+              >
+                <div className={`profile-hero-swap-coin${heroShowBadge ? ' is-flipped' : ''}`}>
+                  <div className="profile-hero-swap-face profile-hero-swap-face--avatar">
+                    <img src={displayAvatar} alt={`${displayName} profile`} className="profile-hero-swap-avatar" draggable={false} />
+                  </div>
+                  <div className="profile-hero-swap-face profile-hero-swap-face--badge">
+                    <RankBadge tierId={rank.tier.id} size={88} className="profile-hero-swap-badge" />
+                  </div>
                 </div>
-              )}
+              </div>
 
               <div className="profile-identity">
                 <div className="profile-name-row">
@@ -767,7 +944,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     </span>
                   )}
                 </div>
-                <span className="profile-handle">@{displayUsername}</span>
                 {displayRole && <span className="profile-role">{displayRole}</span>}
               </div>
             </div>
@@ -775,17 +951,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <p className={`profile-bio${isOwnProfile && !bio ? ' profile-bio--empty' : ''}`}>
               {displayBio}
             </p>
-          </div>
-
-          <div className="profile-hero-aside">
-            <div className="profile-hero-badge-wrap">
-              <RankBadge
-                tierId={rank.tier.id}
-                size={96}
-                className="profile-hero-rank-badge"
-                onClick={() => setIsRankModalOpen(true)}
-              />
-            </div>
           </div>
 
           {isOwnProfile ? (
@@ -845,7 +1010,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         type="button"
         className="profile-xp-line"
         onClick={() => setIsRankModalOpen(true)}
-        style={{ '--rank-color': rank.tier.color } as React.CSSProperties}
+        style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
       >
         <div className="profile-xp-line-head">
           <span className="profile-xp-line-name">{rank.tier.name}</span>
@@ -871,14 +1036,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       {/* Tabs */}
       <div className="profile-tabs">
-        {(['posts', 'events', 'achievements', 'saved'] as TabType[]).map((tab) => (
+        {(['posts', 'events', 'achievements', 'saved', 'communities'] as TabType[]).map((tab) => (
           <button
             key={tab}
             type="button"
             className={`profile-tab ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {TAB_LABELS[tab]}
           </button>
         ))}
       </div>
@@ -1047,8 +1212,209 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             <p>Save events or posts for quick access later.</p>
           </div>
         )}
+
+        {activeTab === 'communities' && (
+          <div className="profile-communities animate-fadeIn">
+            {isOwnProfile && canUserCreateCommunity() && (
+              <button
+                type="button"
+                className="profile-create-community-btn"
+                onClick={() => {
+                  setCommunityAvatar(avatar);
+                  setIsCreateCommunityOpen(true);
+                }}
+              >
+                <Plus size={16} strokeWidth={2.5} />
+                Create Community
+              </button>
+            )}
+
+            {communities.length === 0 ? (
+              <div className="profile-empty profile-empty--inline">
+                <Users size={32} strokeWidth={1.5} />
+                <h3>{isOwnProfile ? 'No communities yet' : 'No communities'}</h3>
+                <p>
+                  {isOwnProfile
+                    ? 'Create one public community to gather your people — a chat is set up automatically.'
+                    : `${displayName} hasn't created a community yet.`}
+                </p>
+              </div>
+            ) : (
+              <div className="profile-community-list">
+                {communities.map((community) => (
+                  <button
+                    key={community.id}
+                    type="button"
+                    className="profile-community-card"
+                    onClick={() => handleCommunityClick(community)}
+                  >
+                    <span className="profile-community-icon" aria-hidden="true">
+                      <img
+                        src={getCommunityAvatar(community)}
+                        alt=""
+                        className="profile-community-avatar"
+                      />
+                    </span>
+                    <span className="profile-community-copy">
+                      <span className="profile-community-name">{community.name}</span>
+                      {community.description && (
+                        <span className="profile-community-desc">{community.description}</span>
+                      )}
+                    </span>
+                    <ChevronRight size={16} className="profile-community-chevron" aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       </div>
+
+      {/* --------------------------------------------------
+          CREATE COMMUNITY MODAL
+          -------------------------------------------------- */}
+      {isOwnProfile && isCreateCommunityOpen && canUserCreateCommunity() && (
+        <div
+          className="ios-drawer-overlay create-community-overlay"
+          onClick={() => {
+            setIsCreateCommunityOpen(false);
+            resetCreateCommunityForm();
+          }}
+        >
+          <div
+            className="ios-drawer-sheet create-community-sheet animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="create-community-handle" aria-hidden="true" />
+
+            <div className="create-community-header">
+              <div className="create-community-header-icon">
+                <Users size={22} strokeWidth={2} />
+              </div>
+              <div className="create-community-header-text">
+                <h3 className="create-community-title">Create Community</h3>
+                <p className="create-community-lead">
+                  One public community per profile — a chat opens instantly when you&apos;re done.
+                </p>
+              </div>
+              <button
+                className="create-community-close"
+                onClick={() => {
+            setIsCreateCommunityOpen(false);
+            resetCreateCommunityForm();
+          }}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCommunity} className="create-community-form">
+              <div className="create-community-body scrollable">
+                <div className="create-community-photo-field">
+                  <button
+                    type="button"
+                    className="create-community-photo-btn"
+                    onClick={() => communityPhotoRef.current?.click()}
+                    aria-label="Upload community photo"
+                  >
+                    <img src={communityAvatar} alt="" className="create-community-photo-preview" />
+                    <span className="create-community-photo-badge">
+                      <Camera size={14} />
+                    </span>
+                  </button>
+                  <div className="create-community-photo-copy">
+                    <strong>Community photo</strong>
+                    <span>Starts with your profile photo — tap to change</span>
+                  </div>
+                  <input
+                    ref={communityPhotoRef}
+                    type="file"
+                    accept="image/*"
+                    className="create-community-photo-input"
+                    onChange={handleCommunityPhotoChange}
+                  />
+                </div>
+
+                <label className="create-community-field">
+                  <span className="create-community-label">Group name</span>
+                  <input
+                    type="text"
+                    className="create-community-input"
+                    value={communityName}
+                    onChange={(e) => setCommunityName(e.target.value)}
+                    placeholder="Weekend Football Crew"
+                    maxLength={48}
+                    autoFocus
+                  />
+                </label>
+
+                <label className="create-community-field">
+                  <span className="create-community-label">
+                    About <span className="create-community-optional">optional</span>
+                  </span>
+                  <textarea
+                    className="create-community-textarea"
+                    value={communityDescription}
+                    onChange={(e) => setCommunityDescription(e.target.value)}
+                    placeholder="What's this community about?"
+                    rows={3}
+                    maxLength={160}
+                  />
+                </label>
+
+                <div className="create-community-field">
+                  <span className="create-community-label">Add people you Dabbed Up with</span>
+                  <p className="create-community-members-hint">
+                    Selected members join the community chat right away.
+                  </p>
+                  {dabbedPeople.length === 0 ? (
+                    <p className="create-community-members-empty">
+                      Dab Up with people on Discover first — they&apos;ll show up here.
+                    </p>
+                  ) : (
+                    <div className="create-community-members">
+                      {dabbedPeople.map((person) => {
+                        const isSelected = communityMemberIds.includes(person.id);
+                        return (
+                          <button
+                            key={person.id}
+                            type="button"
+                            className={`create-community-member-row${isSelected ? ' is-selected' : ''}`}
+                            onClick={() => toggleCommunityMember(person.id)}
+                            aria-pressed={isSelected}
+                          >
+                            <img src={person.avatar} alt="" className="create-community-member-avatar" />
+                            <span className="create-community-member-meta">
+                              <strong>{person.name}</strong>
+                              <small>@{person.username}</small>
+                            </span>
+                            <span className="create-community-member-check" aria-hidden="true">
+                              {isSelected && <Check size={14} />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="create-community-footer">
+                <button
+                  type="submit"
+                  className="create-community-submit"
+                  disabled={!communityName.trim()}
+                >
+                  <Plus size={16} strokeWidth={2.5} />
+                  Create & open chat
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --------------------------------------------------
           EDIT PROFILE MODAL
@@ -1522,6 +1888,53 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Long-press: view photo or badge */}
+      {heroActionMenuOpen && (
+        <div className="ios-drawer-overlay profile-hero-action-overlay" onClick={() => setHeroActionMenuOpen(false)}>
+          <div className="profile-hero-action-sheet animate-slideUp" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="profile-hero-action-option" onClick={() => openHeroZoom('avatar')}>
+              View Photo
+            </button>
+            <button type="button" className="profile-hero-action-option" onClick={() => openHeroZoom('badge')}>
+              View Badge
+            </button>
+            <button type="button" className="profile-hero-action-cancel" onClick={() => setHeroActionMenuOpen(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {heroZoomView && (
+        <div className="profile-hero-zoom-overlay" onClick={() => setHeroZoomView(null)}>
+          <button
+            type="button"
+            className="profile-hero-zoom-close"
+            onClick={() => setHeroZoomView(null)}
+            aria-label="Close"
+          >
+            <X size={22} />
+          </button>
+          <div className="profile-hero-zoom-stage" onClick={(e) => e.stopPropagation()}>
+            {heroZoomView === 'avatar' ? (
+              <img
+                src={displayAvatar}
+                alt={`${displayName} profile photo`}
+                className="profile-hero-zoom-img profile-hero-zoom-img--avatar"
+                draggable={false}
+              />
+            ) : (
+              <img
+                src={rank.tier.badgeImage}
+                alt={`${rank.tier.name} rank badge`}
+                className="profile-hero-zoom-img profile-hero-zoom-img--badge"
+                draggable={false}
+              />
+            )}
           </div>
         </div>
       )}

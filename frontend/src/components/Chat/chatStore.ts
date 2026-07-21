@@ -3,6 +3,7 @@ import {
   ME_AUTHOR_ID,
   ORGANIZER_BY_ID,
   getCurrentUserOrganizer,
+  getDefaultCommunityAvatarForCreator,
   type EventOrganizer,
 } from '../ExplorePage/exploreEvents';
 import {
@@ -57,12 +58,14 @@ export type ChatMember = {
 
 export type ChatConversation = {
   id: string;
-  type: 'dm' | 'group' | 'event';
+  type: 'dm' | 'group' | 'event' | 'community';
   name: string;
   avatar: string;
   subtitle: string;
   online?: boolean;
   eventId?: string;
+  communityId?: string;
+  visibility?: 'public' | 'private';
   adminId?: string;
   members: ChatMember[];
   messages: ChatMessage[];
@@ -73,12 +76,14 @@ type StoredMessage = Omit<ChatMessage, 'sender' | 'time'>;
 
 type StoredConversation = {
   id: string;
-  type: 'dm' | 'group';
+  type: 'dm' | 'group' | 'community';
   name: string;
   avatar: string;
   subtitle: string;
   online?: boolean;
   adminId?: string;
+  communityId?: string;
+  visibility?: 'public' | 'private';
   memberIds: string[];
   messages: StoredMessage[];
   createdAt: number;
@@ -86,6 +91,9 @@ type StoredConversation = {
 
 const STORE_KEY = 'zenex-chat-store-v2';
 const REACTIONS_KEY = 'zenex-chat-reactions-v1';
+const PINS_KEY = 'zenex-chat-pins-v1';
+const MUTES_KEY = 'zenex-chat-mutes-v1';
+const HIDDEN_KEY = 'zenex-chat-hidden-v1';
 
 function formatTime(createdAt: number): string {
   const diff = Date.now() - createdAt;
@@ -109,12 +117,31 @@ function meMember(): ChatMember {
   return { id: me.id, name: me.name, avatar: me.avatar, role: 'You' };
 }
 
+function isLegacyCommunityAvatar(url?: string): boolean {
+  return !url || url.includes('photo-1522075469751');
+}
+
+function normalizeCommunityConversation(conv: StoredConversation): StoredConversation {
+  if (conv.type !== 'community') return conv;
+  const memberCount = conv.memberIds?.length ?? 0;
+  const memberLabel = memberCount === 1 ? '1 member' : `${memberCount} members`;
+  const avatar = isLegacyCommunityAvatar(conv.avatar) && conv.adminId
+    ? getDefaultCommunityAvatarForCreator(conv.adminId)
+    : conv.avatar;
+  return {
+    ...conv,
+    avatar,
+    visibility: 'public',
+    subtitle: `Public community · ${memberLabel}`,
+  };
+}
+
 function loadStore(): StoredConversation[] {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     if (!Array.isArray(parsed)) return seedConversations();
-    return parsed;
+    return parsed.map(normalizeCommunityConversation);
   } catch {
     return seedConversations();
   }
@@ -123,6 +150,143 @@ function loadStore(): StoredConversation[] {
 function saveStore(conversations: StoredConversation[]): void {
   localStorage.setItem(STORE_KEY, JSON.stringify(conversations));
   window.dispatchEvent(new CustomEvent(CHAT_STORE_CHANGED));
+}
+
+function loadPins(): string[] {
+  try {
+    const raw = localStorage.getItem(PINS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePins(chatIds: string[]): void {
+  localStorage.setItem(PINS_KEY, JSON.stringify(chatIds));
+  window.dispatchEvent(new CustomEvent(CHAT_STORE_CHANGED));
+}
+
+export function getPinnedChatIds(): string[] {
+  return loadPins();
+}
+
+export function isChatPinned(chatId: string): boolean {
+  return loadPins().includes(chatId);
+}
+
+export function pinChat(chatId: string): void {
+  const pins = loadPins();
+  if (pins.includes(chatId)) return;
+  savePins([chatId, ...pins]);
+}
+
+export function unpinChat(chatId: string): void {
+  savePins(loadPins().filter((id) => id !== chatId));
+}
+
+export function toggleChatPin(chatId: string): boolean {
+  if (isChatPinned(chatId)) {
+    unpinChat(chatId);
+    return false;
+  }
+  pinChat(chatId);
+  return true;
+}
+
+function loadMutedChatIds(): string[] {
+  try {
+    const raw = localStorage.getItem(MUTES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMutedChatIds(chatIds: string[]): void {
+  localStorage.setItem(MUTES_KEY, JSON.stringify(chatIds));
+  window.dispatchEvent(new CustomEvent(CHAT_STORE_CHANGED));
+}
+
+export function isChatMuted(chatId: string): boolean {
+  return loadMutedChatIds().includes(chatId);
+}
+
+export function muteChat(chatId: string): void {
+  const muted = loadMutedChatIds();
+  if (muted.includes(chatId)) return;
+  saveMutedChatIds([...muted, chatId]);
+}
+
+export function unmuteChat(chatId: string): void {
+  saveMutedChatIds(loadMutedChatIds().filter((id) => id !== chatId));
+}
+
+export function toggleChatMute(chatId: string): boolean {
+  if (isChatMuted(chatId)) {
+    unmuteChat(chatId);
+    return false;
+  }
+  muteChat(chatId);
+  return true;
+}
+
+function loadHiddenChatIds(): string[] {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHiddenChatIds(chatIds: string[]): void {
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(chatIds));
+  window.dispatchEvent(new CustomEvent(CHAT_STORE_CHANGED));
+}
+
+export function deleteConversation(chatId: string): boolean {
+  unpinChat(chatId);
+  unmuteChat(chatId);
+
+  if (chatId.startsWith('event-')) {
+    const hidden = loadHiddenChatIds();
+    if (hidden.includes(chatId)) return false;
+    saveHiddenChatIds([...hidden, chatId]);
+    return true;
+  }
+
+  const store = loadStore();
+  const next = store.filter((c) => c.id !== chatId);
+  if (next.length === store.length) return false;
+  saveStore(next);
+  return true;
+}
+
+export function sortConversationsByPinAndActivity(
+  conversations: ChatConversation[],
+): ChatConversation[] {
+  const pins = loadPins();
+  return [...conversations].sort((a, b) => {
+    const aPin = pins.indexOf(a.id);
+    const bPin = pins.indexOf(b.id);
+    const aRank = aPin === -1 ? Number.MAX_SAFE_INTEGER : aPin;
+    const bRank = bPin === -1 ? Number.MAX_SAFE_INTEGER : bPin;
+    if (aRank !== bRank) return aRank - bRank;
+    const aTime = a.messages[a.messages.length - 1]?.createdAt ?? a.createdAt;
+    const bTime = b.messages[b.messages.length - 1]?.createdAt ?? b.createdAt;
+    return bTime - aTime;
+  });
+}
+
+export function isOwnCreatedCommunityChat(chat: ChatConversation): boolean {
+  return chat.type === 'community' && chat.adminId === ME_AUTHOR_ID;
+}
+
+export function isJoinedCommunityChat(chat: ChatConversation): boolean {
+  return chat.type === 'community' && chat.adminId !== ME_AUTHOR_ID;
 }
 
 function loadReactionOverlay(): Record<string, Record<string, ChatReaction[]>> {
@@ -270,6 +434,8 @@ function hydrateConversation(stored: StoredConversation): ChatConversation {
     subtitle: stored.subtitle,
     online: stored.online,
     adminId: stored.adminId,
+    communityId: stored.communityId,
+    visibility: stored.visibility,
     members: membersFromIds(stored.memberIds),
     createdAt: stored.createdAt,
     messages: stored.messages.map((m) => hydrateMessage(m, overlay[m.id] ?? [])),
@@ -327,13 +493,13 @@ function eventChatToConversation(
 }
 
 export function getAllConversations(): ChatConversation[] {
-  const stored = loadStore().map(hydrateConversation);
-  const events = getEventChats().map(eventChatToConversation);
-  return [...events, ...stored].sort((a, b) => {
-    const aTime = a.messages[a.messages.length - 1]?.createdAt ?? a.createdAt;
-    const bTime = b.messages[b.messages.length - 1]?.createdAt ?? b.createdAt;
-    return bTime - aTime;
-  });
+  const hidden = new Set(loadHiddenChatIds());
+  const stored = loadStore().map(hydrateConversation).filter((c) => !hidden.has(c.id));
+  const events = getEventChats()
+    .map(eventChatToConversation)
+    .filter((c) => !hidden.has(c.id));
+  const all = [...events, ...stored];
+  return sortConversationsByPinAndActivity(all);
 }
 
 export function getAvailableContacts(): ChatMember[] {
@@ -524,9 +690,120 @@ export function createGroup(name: string, memberIds: string[]): ChatConversation
   return hydrateConversation(conv);
 }
 
+export function createCommunityChat(input: {
+  communityId: string;
+  name: string;
+  avatar?: string;
+  memberIds?: string[];
+}): ChatConversation | null {
+  const trimmed = input.name.trim();
+  if (!trimmed) return null;
+
+  const me = getCurrentUserOrganizer();
+  const id = `community-chat-${input.communityId}`;
+  const memberIds = [
+    ME_AUTHOR_ID,
+    ...(input.memberIds ?? []).filter((memberId) => memberId !== ME_AUTHOR_ID),
+  ].filter((memberId, index, all) => all.indexOf(memberId) === index);
+  const memberCount = memberIds.length;
+  const avatar = input.avatar?.trim() || getDefaultCommunityAvatarForCreator(ME_AUTHOR_ID);
+  const memberLabel = memberCount === 1 ? '1 member' : `${memberCount} members`;
+
+  const conv: StoredConversation = {
+    id,
+    type: 'community',
+    name: trimmed,
+    avatar,
+    subtitle: `Public community · ${memberLabel}`,
+    adminId: ME_AUTHOR_ID,
+    communityId: input.communityId,
+    visibility: 'public',
+    memberIds,
+    createdAt: Date.now(),
+    messages: [
+      {
+        id: `${id}-welcome`,
+        authorId: ME_AUTHOR_ID,
+        authorName: me.name,
+        kind: 'text',
+        text: `Welcome to "${trimmed}" — your community chat is live. Invite members and start the conversation! 👋`,
+        createdAt: Date.now(),
+        reactions: [],
+      },
+    ],
+  };
+
+  saveStore([conv, ...loadStore()]);
+  pinChat(id);
+  return hydrateConversation(conv);
+}
+
+export function ensureJoinedCommunityChat(input: {
+  communityId: string;
+  name: string;
+  adminId: string;
+}): ChatConversation {
+  const id = `community-chat-${input.communityId}`;
+  const store = loadStore();
+  const existingIdx = store.findIndex((c) => c.id === id);
+  const me = getCurrentUserOrganizer();
+
+  if (existingIdx !== -1) {
+    const existing = store[existingIdx];
+    if (!existing.memberIds.includes(ME_AUTHOR_ID)) {
+      store[existingIdx] = normalizeCommunityConversation({
+        ...existing,
+        memberIds: [...existing.memberIds, ME_AUTHOR_ID],
+        messages: [
+          ...existing.messages,
+          {
+            id: `${id}-join-${Date.now()}`,
+            authorId: ME_AUTHOR_ID,
+            authorName: me.name,
+            kind: 'text',
+            text: `${me.name} joined the community 👋`,
+            createdAt: Date.now(),
+            reactions: [],
+          },
+        ],
+      });
+      saveStore(store);
+    }
+    return hydrateConversation(store[existingIdx]);
+  }
+
+  const admin = EVENT_ORGANIZERS.find((o) => o.id === input.adminId);
+  const conv: StoredConversation = normalizeCommunityConversation({
+    id,
+    type: 'community',
+    name: input.name,
+    avatar: getDefaultCommunityAvatarForCreator(input.adminId),
+    subtitle: 'Public community · 2 members',
+    adminId: input.adminId,
+    communityId: input.communityId,
+    visibility: 'public',
+    memberIds: [input.adminId, ME_AUTHOR_ID],
+    createdAt: Date.now() - 86_400_000,
+    messages: [
+      {
+        id: `${id}-welcome`,
+        authorId: input.adminId,
+        authorName: admin?.name ?? 'Host',
+        kind: 'text',
+        text: `Welcome to "${input.name}" — say hi to the crew! 👋`,
+        createdAt: Date.now() - 86_400_000,
+        reactions: [],
+      },
+    ],
+  });
+
+  saveStore([conv, ...store]);
+  return hydrateConversation(conv);
+}
+
 export function addGroupMember(chatId: string, memberId: string): boolean {
   const conv = loadStore().find((c) => c.id === chatId);
-  if (!conv || conv.type !== 'group' || conv.adminId !== ME_AUTHOR_ID) return false;
+  if (!conv || (conv.type !== 'group' && conv.type !== 'community') || conv.adminId !== ME_AUTHOR_ID) return false;
   if (conv.memberIds.includes(memberId)) return false;
 
   const member = EVENT_ORGANIZERS.find((o) => o.id === memberId);
@@ -554,7 +831,7 @@ export function addGroupMember(chatId: string, memberId: string): boolean {
 
 export function removeGroupMember(chatId: string, memberId: string): boolean {
   const conv = loadStore().find((c) => c.id === chatId);
-  if (!conv || conv.type !== 'group' || conv.adminId !== ME_AUTHOR_ID) return false;
+  if (!conv || (conv.type !== 'group' && conv.type !== 'community') || conv.adminId !== ME_AUTHOR_ID) return false;
   if (memberId === ME_AUTHOR_ID) return false;
   if (!conv.memberIds.includes(memberId)) return false;
 

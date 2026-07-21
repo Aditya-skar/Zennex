@@ -19,6 +19,14 @@ export type RankTier = {
   tagline: string;
   /** Path to the badge PNG in /public. */
   badgeImage: string;
+  /** Circular medallion vs shield/patch artwork. */
+  badgeFrame: 'medallion' | 'patch';
+  /** Optical scale inside the badge box (1 = fit). */
+  badgeScale: number;
+  /** Hero coin-flip scale (defaults to badgeScale when omitted). */
+  badgeHeroScale: number;
+  /** object-position fine-tune per asset. */
+  badgeFocus: string;
 };
 
 /** Bump when badge artwork is replaced so browsers skip stale cache. */
@@ -39,6 +47,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Foundation',
     tagline: 'Everyone starts at sea level.',
     badgeImage: badgeUrl('ground-zero'),
+    badgeFrame: 'medallion',
+    badgeScale: 0.98,
+    badgeHeroScale: 0.94,
+    badgeFocus: '50% 49%',
   },
   {
     id: 'drifter',
@@ -50,6 +62,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Moving',
     tagline: 'Moving with the current, finding your crowd.',
     badgeImage: badgeUrl('drifter'),
+    badgeFrame: 'medallion',
+    badgeScale: 0.98,
+    badgeHeroScale: 0.94,
+    badgeFocus: '50% 50%',
   },
   {
     id: 'skywalker',
@@ -61,6 +77,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Active',
     tagline: 'Head in the clouds, feet on the court.',
     badgeImage: badgeUrl('skywalker'),
+    badgeFrame: 'medallion',
+    badgeScale: 0.96,
+    badgeHeroScale: 0.92,
+    badgeFocus: '50% 49%',
   },
   {
     id: 'firestreak',
@@ -72,6 +92,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'High Intensity',
     tagline: 'Burning through events back to back.',
     badgeImage: badgeUrl('firestreak'),
+    badgeFrame: 'patch',
+    badgeScale: 0.86,
+    badgeHeroScale: 0.8,
+    badgeFocus: '50% 49%',
   },
   {
     id: 'edgewalker',
@@ -83,6 +107,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Elite Edge',
     tagline: 'Walking the starry edge of the scene.',
     badgeImage: badgeUrl('edgewalker'),
+    badgeFrame: 'patch',
+    badgeScale: 0.9,
+    badgeHeroScale: 0.84,
+    badgeFocus: '50% 50%',
   },
   {
     id: 'voidrunner',
@@ -94,6 +122,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Rare Air',
     tagline: 'Past the noise. Into the void.',
     badgeImage: badgeUrl('voidrunner'),
+    badgeFrame: 'patch',
+    badgeScale: 0.9,
+    badgeHeroScale: 0.84,
+    badgeFocus: '50% 49%',
   },
   {
     id: 'orbiter',
@@ -105,6 +137,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Top Tier',
     tagline: 'The scene revolves around you now.',
     badgeImage: badgeUrl('orbiter'),
+    badgeFrame: 'medallion',
+    badgeScale: 0.92,
+    badgeHeroScale: 0.88,
+    badgeFocus: '50% 49%',
   },
   {
     id: 'zenith',
@@ -116,6 +152,10 @@ export const RANK_TIERS: RankTier[] = [
     vibe: 'Summit',
     tagline: 'Supernova. Nothing above but sky.',
     badgeImage: badgeUrl('zenith'),
+    badgeFrame: 'patch',
+    badgeScale: 0.88,
+    badgeHeroScale: 0.82,
+    badgeFocus: '50% 50%',
   },
 ];
 

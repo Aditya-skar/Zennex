@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User, Eye, EyeOff, Lock, Check } from 'lucide-react';
 import PasswordInput from './PasswordInput';
 import SocialLoginButtons from './SocialLoginButtons';
+import { loginWithPassword } from '../../api';
 import './LoginPage.css';
 
 interface LoginPageProps {
@@ -27,7 +28,7 @@ export const LoginPage: React.FC<LoginPageProps> = () => {
     setError('');
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!username || !password) {
@@ -38,36 +39,32 @@ export const LoginPage: React.FC<LoginPageProps> = () => {
     setIsLoading(true);
     setError('');
 
-    // Simulate verification
-    setTimeout(() => {
-      if (username.trim().length >= 3 && password.trim().length >= 3) {
-        localStorage.setItem('zenex-auth', 'true');
-        localStorage.setItem('zenex-username', username.trim());
-        localStorage.setItem('zenex-fullname', username.trim() === 'admin' ? 'Admin User' : username.trim());
-        window.location.href = '/';
-      } else {
-        setIsLoading(false);
-        setError('Invalid username or password (must be at least 3 characters)');
-      }
-    }, 1500);
+    try {
+      await loginWithPassword(username, password);
+      window.location.href = '/';
+    } catch (err) {
+      setIsLoading(false);
+      setError(err instanceof Error ? err.message : 'Login failed');
+    }
   };
 
   // Simulate Face ID authentication
-  const handleFaceIDClick = (e: React.MouseEvent) => {
+  const handleFaceIDClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     setShowFaceIDScan(true);
     setFaceIDSuccess(false);
 
-    // Dynamic scanning state
-    setTimeout(() => {
+    setTimeout(async () => {
       setFaceIDSuccess(true);
-      
-      // Success delay then login
-      setTimeout(() => {
-        localStorage.setItem('zenex-auth', 'true');
-        localStorage.setItem('zenex-username', 'ritvik');
-        localStorage.setItem('zenex-fullname', 'Ritvik Katakam');
-        window.location.href = '/';
+      setTimeout(async () => {
+        try {
+          await loginWithPassword('ritvik', 'ritvik');
+          localStorage.setItem('zenex-fullname', 'Ritvik Katakam');
+          window.location.href = '/';
+        } catch {
+          setShowFaceIDScan(false);
+          setError('Face ID login failed');
+        }
       }, 1000);
     }, 1800);
   };

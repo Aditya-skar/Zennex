@@ -4,6 +4,7 @@ import {
   type ExploreEvent,
   type GameAccess,
 } from '../ExplorePage/exploreEvents';
+import { resolveMemberIdsFromLists } from './audienceLists';
 import {
   type HomeFeedPost,
   type HomeMainCategory,
@@ -40,6 +41,8 @@ export type CreateEventPayload = {
   registrationDeadline?: string; // yyyy-mm-ddTHH:mm (local)
   /** When true (default), host gets a group chat on publish. */
   createGroupChat?: boolean;
+  /** Selected people lists for invite-only events. */
+  inviteListIds?: string[];
 };
 
 /* ---------- User post storage ---------- */
@@ -124,6 +127,12 @@ function formatEventDateTime(date: string, time: string) {
 
 function buildExploreEvent(data: CreateEventPayload): ExploreEvent {
   const { dateLabel, timeLabel } = formatEventDateTime(data.date, data.time);
+  const inviteListIds =
+    data.gameAccess === 'invite' && data.inviteListIds?.length ? data.inviteListIds : undefined;
+  const invitedMemberIds = inviteListIds?.length
+    ? resolveMemberIdsFromLists(inviteListIds)
+    : undefined;
+
   return {
     id: data.id,
     title: data.title,
@@ -139,6 +148,8 @@ function buildExploreEvent(data: CreateEventPayload): ExploreEvent {
     image: data.image,
     organizerId: ME_AUTHOR_ID,
     gameAccess: data.gameAccess,
+    inviteListIds,
+    invitedMemberIds,
   };
 }
 

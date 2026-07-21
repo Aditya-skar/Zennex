@@ -8,28 +8,24 @@
   overflow: visible;
   background: transparent !important;
   border: none;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.38));
 }
 
 .rank-badge-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  object-position: var(--badge-focus, 50% 50%);
+  transform: scale(var(--badge-scale, 1));
+  transform-origin: center center;
   display: block;
   background: transparent !important;
   user-select: none;
   -webkit-user-drag: none;
-  -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 66%, transparent 67.5%);
-  mask-image: radial-gradient(circle at 50% 50%, #000 66%, transparent 67.5%);
 }
 
-/* Non-circular patches keep their full shape */
-.rank-badge--firestreak .rank-badge-img,
-.rank-badge--edgewalker .rank-badge-img,
-.rank-badge--voidrunner .rank-badge-img,
-.rank-badge--zenith .rank-badge-img {
-  -webkit-mask-image: none;
-  mask-image: none;
+.rank-badge--frame-patch .rank-badge-img {
+  /* Patch PNGs include their own silhouette — no extra crop. */
 }
 
 .rank-badge--btn {
@@ -39,18 +35,13 @@
   border: none;
 }
 
-.rank-badge--btn:active {
-  transform: scale(0.96);
+.rank-badge--btn:active .rank-badge-img {
+  transform: scale(calc(var(--badge-scale, 1) * 0.96));
 }
 
 .rank-badge--btn:focus-visible {
   outline: 2px solid var(--home-bw-fg, #111);
   outline-offset: 2px;
-}
-
-.profile-rank-ladder-badge-img.passed {
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.25)) grayscale(0.3);
-  opacity: 0.55;
 }
 
 .profile-hero-badge-wrap,

@@ -9,7 +9,6 @@ import {
   MoreVertical,
   Share2,
   Trash2,
-  CalendarClock,
   Sparkles,
   Star,
   UserPlus,
@@ -33,6 +32,7 @@ import {
 import PostCountdown from './PostCountdown';
 import { isJoined as checkJoined, toggleJoin, deletePublishedPost, isUserCreatedPost } from './publishContent';
 import ConfirmDialog from '../common/ConfirmDialog';
+import { getEventCategoryIconClassName, getEventCategoryIconSrc } from '../ExplorePage/eventMapIcons';
 import { ensureEventChat, removeEventChat, deleteEventTranscript } from '../common/eventChats';
 import './HomeFeed.css';
 
@@ -423,8 +423,14 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
       {!past && <PostCountdown post={post} joined={joined} onToggleJoin={handleJoin} />}
 
       <button type="button" className="home-post-event-chip" onClick={handleLocation}>
-        <span className="home-post-event-chip-icon">
-          {past ? <CalendarClock size={15} /> : <MapPin size={15} />}
+        <span className="home-post-event-chip-icon" aria-hidden="true">
+          <img
+            src={getEventCategoryIconSrc(post.category)}
+            alt=""
+            className={getEventCategoryIconClassName(post.category)}
+            loading="lazy"
+            draggable={false}
+          />
         </span>
         <span className="home-post-event-chip-copy">
           <span className="home-post-event-title">{post.eventTitle}</span>

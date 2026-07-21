@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Mail, Phone, Lock, Check, ArrowLeft } from 'lucide-react';
 import PasswordInput from './PasswordInput';
 import SocialLoginButtons from './SocialLoginButtons';
+import { signupAccount } from '../../api';
 import './SignupPage.css';
 
 interface SignupPageProps {
@@ -59,7 +60,7 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
     );
   };
 
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!fullName || !username || !email || !phone || !password || !confirmPassword) {
@@ -80,13 +81,20 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
     setIsLoading(true);
     setError('');
 
-    // Simulate signup completion
-    setTimeout(() => {
-      localStorage.setItem('zenex-auth', 'true');
-      localStorage.setItem('zenex-username', username.trim());
-      localStorage.setItem('zenex-fullname', fullName.trim());
+    try {
+      await signupAccount({
+        username,
+        password,
+        fullName,
+        email: email.trim(),
+      });
+      localStorage.setItem('zenex-sports', JSON.stringify(selectedSports));
+      localStorage.setItem('zenex-ent', JSON.stringify(selectedEnt));
       window.location.href = '/';
-    }, 1500);
+    } catch (err) {
+      setIsLoading(false);
+      setError(err instanceof Error ? err.message : 'Signup failed');
+    }
   };
 
   const isFormValid = fullName && username && email && phone && password && confirmPassword && (password === confirmPassword) && agreeTerms;

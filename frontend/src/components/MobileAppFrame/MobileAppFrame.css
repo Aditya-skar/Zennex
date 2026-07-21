@@ -2,7 +2,7 @@
    MobileAppFrame – phone preview + native fullscreen
    ==================================================== */
 
-/* Desktop browser: centered iPhone-style frame */
+/* Desktop browser: centered iPhone-style frame — flat backdrop, no decorative grid */
 .mobile-app-viewport {
   height: 100%;
   min-height: 100vh;
@@ -13,16 +13,11 @@
   justify-content: center;
   padding: 24px 16px;
   box-sizing: border-box;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(120, 120, 120, 0.08), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(80, 80, 80, 0.06), transparent 45%),
-    #0a0a0a;
+  background: #0a0a0a;
 }
 
 [data-theme='light'] .mobile-app-viewport {
-  background:
-    radial-gradient(circle at 20% 20%, rgba(0, 0, 0, 0.04), transparent 40%),
-    #e5e5e7;
+  background: #e5e5e7;
 }
 
 .mobile-device-frame {
@@ -50,14 +45,18 @@
 }
 
 .mobile-status-bar {
-  position: relative;
-  z-index: 300;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3000;
   height: 44px;
   padding: 14px 22px 0;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   color: var(--text-primary);
+  background: transparent;
   flex-shrink: 0;
   pointer-events: none;
 }
@@ -98,6 +97,8 @@
   isolation: isolate;
   display: flex;
   flex-direction: column;
+  /* Preview status bar sits over the screen — fixed explore UI must clear it */
+  --phone-status-offset: 44px;
 }
 
 .mobile-app-content {
@@ -107,6 +108,9 @@
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  /* Page fills the whole screen; status bar floats on top */
+  padding-top: 0;
+  box-sizing: border-box;
 }
 
 .mobile-fullscreen {
@@ -116,8 +120,48 @@
   min-height: 100dvh;
   overflow: hidden;
   background: var(--bg-primary);
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: 0;
+  --phone-status-offset: env(safe-area-inset-top, 0px);
+}
+
+.mobile-fullscreen .mobile-app-content {
+  padding-top: 0;
+}
+
+/* Page background fills behind the transparent status bar */
+.mobile-app-screen:has(.home-active),
+.mobile-app-content:has(.home-active) {
+  background: #0a0a0a;
+}
+
+[data-theme='light'] .mobile-app-screen:has(.home-active),
+[data-theme='light'] .mobile-app-content:has(.home-active) {
+  background: #ffffff;
+}
+
+.mobile-app-screen:has(.explore-active),
+.mobile-app-content:has(.explore-active) {
+  background: #1a1a1a;
+}
+
+[data-theme='light'] .mobile-app-screen:has(.explore-active),
+[data-theme='light'] .mobile-app-content:has(.explore-active) {
+  background: var(--bg-primary, #ffffff);
+}
+
+/* Status icons stay readable on home/profile monochrome surfaces */
+.mobile-app-screen:has(.home-active) .mobile-status-bar {
+  color: #ffffff;
+}
+
+[data-theme='light'] .mobile-app-screen:has(.home-active) .mobile-status-bar {
+  color: #111111;
+}
+
+.mobile-app-screen:has(.explore-active) .mobile-status-bar {
+  color: #ffffff;
 }
 
 .mobile-home-indicator {
@@ -156,6 +200,21 @@ html.zenex-mobile-app .zenex-layout-grid.sidebar-collapsed {
   padding: 16px 16px 0 !important;
   max-width: 100% !important;
   width: 100% !important;
+}
+
+.mobile-app-mode .home-active .zenex-layout-grid:has(.chat-page-view),
+.mobile-app-mode .home-active .zenex-layout-grid:has(.profile-page-view),
+html.zenex-mobile-app .home-active .zenex-layout-grid:has(.chat-page-view),
+html.zenex-mobile-app .home-active .zenex-layout-grid:has(.profile-page-view) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+.mobile-app-mode .home-active .zenex-layout-grid:has(.profile-page-view),
+html.zenex-mobile-app .home-active .zenex-layout-grid:has(.profile-page-view) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  gap: 0 !important;
 }
 
 .mobile-app-mode .zenex-sidebar,
@@ -236,7 +295,7 @@ html.zenex-mobile-app .chat-shell {
 html.zenex-mobile-app .zenex-app-shell {
   flex: 1;
   min-height: 0;
-  height: auto;
+  height: 100%;
   max-width: 100%;
   display: flex;
   flex-direction: column;
@@ -252,6 +311,13 @@ html.zenex-mobile-app .zenex-layout-grid {
   flex-direction: column;
 }
 
+html.zenex-mobile-app .home-active.chat-active .zenex-layout-grid,
+.mobile-app-mode .home-active.chat-active .zenex-layout-grid {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
 .mobile-app-mode .zenex-main-panel,
 html.zenex-mobile-app .zenex-main-panel {
   flex: 1;
@@ -263,23 +329,29 @@ html.zenex-mobile-app .zenex-main-panel {
   max-width: 100%;
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 80px);
   box-sizing: border-box;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html.zenex-mobile-app .home-active.chat-active .zenex-main-panel,
+.mobile-app-mode .home-active.chat-active .zenex-main-panel {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.mobile-app-mode .zenex-main-panel::-webkit-scrollbar,
+html.zenex-mobile-app .zenex-main-panel::-webkit-scrollbar {
+  display: none;
+  width: 0;
 }
 
 /* Map tab manages its own bottom insets */
 .mobile-app-mode .explore-active .zenex-main-panel,
 html.zenex-mobile-app .explore-active .zenex-main-panel {
   padding-bottom: 0;
-}
-
-/* Match home/discover monochrome shell on the phone screen */
-.mobile-app-screen:has(.home-active),
-.mobile-app-content:has(.home-active) {
-  background: #0a0a0a;
-}
-
-[data-theme='light'] .mobile-app-screen:has(.home-active),
-[data-theme='light'] .mobile-app-content:has(.home-active) {
-  background: #ffffff;
 }
 
 .mobile-app-mode .ios-auth-shell,
@@ -303,6 +375,14 @@ html.zenex-mobile-app .ios-auth-container {
 
 html.zenex-mobile-app .bottom-navbar {
   display: flex !important;
+}
+
+html.zenex-mobile-app.profile-sheet-open .bottom-navbar,
+html.zenex-mobile-app.create-community-open .bottom-navbar,
+html.zenex-mobile-app.edit-profile-open .bottom-navbar {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 html.zenex-mobile-app .sidebar-toggle-btn {
@@ -338,6 +418,18 @@ html.zenex-mobile-app .zenex-layout-grid.sidebar-collapsed {
   gap: 16px !important;
 }
 
+html.zenex-mobile-app .home-active .zenex-layout-grid:has(.chat-page-view),
+html.zenex-mobile-app .home-active .zenex-layout-grid:has(.profile-page-view) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+html.zenex-mobile-app .home-active .zenex-layout-grid:has(.profile-page-view) {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  gap: 0 !important;
+}
+
 html.zenex-mobile-app .zenex-sidebar,
 html.zenex-mobile-app .zenex-right-panel {
   display: none !important;
@@ -348,8 +440,4 @@ html.zenex-mobile-app .zenex-right-panel {
 
 html.zenex-mobile-app .sidebar-toggle-btn {
   display: none !important;
-}
-
-html.zenex-mobile-app .bottom-navbar {
-  display: flex !important;
 }

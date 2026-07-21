@@ -190,9 +190,14 @@ export const DiscoverPage: React.FC<DiscoverPageProps> = ({
                 </div>
                 <button
                   type="button"
-                  className={`discover-person-connect ${getDabUpStatus(person.id) === 'pending' ? 'is-pending' : ''}`}
+                  className={`discover-person-dap ${getDabUpStatus(person.id) === 'pending' ? 'is-pending' : ''}`}
                   onClick={() => handleDabUp(person.id)}
                   disabled={getDabUpStatus(person.id) !== 'none'}
+                  aria-label={
+                    getDabUpStatus(person.id) === 'pending'
+                      ? `Dab Up pending with ${person.name}`
+                      : `Dab Up with ${person.name}`
+                  }
                 >
                   {getDabUpStatus(person.id) === 'pending' ? 'Pending…' : 'Dab Up'}
                 </button>

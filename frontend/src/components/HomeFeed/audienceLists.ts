@@ -76,3 +76,12 @@ export function toggleListMember(listId: string, memberId: string): PeopleList |
     : [...list.memberIds, memberId];
   return updatePeopleList(listId, { memberIds });
 }
+
+/** Union of all member IDs across the given people lists. */
+export function resolveMemberIdsFromLists(listIds: string[]): string[] {
+  const ids = new Set<string>();
+  for (const listId of listIds) {
+    getPeopleList(listId)?.memberIds.forEach((memberId) => ids.add(memberId));
+  }
+  return [...ids];
+}

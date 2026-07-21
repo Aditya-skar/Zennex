@@ -5,26 +5,21 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import AuthLayout from './components/auth/AuthLayout';
 import MobileAppFrame from './components/MobileAppFrame/MobileAppFrame';
+import { AUTH_CHANGED_EVENT, isLoggedIn } from './api';
 import './App.css';
 
 export const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return !!localStorage.getItem('zenex-auth');
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isLoggedIn());
 
-  // Track localStorage changes to sync auth state across tabs and triggers
   useEffect(() => {
-    const handleStorageChange = () => {
-      setIsAuthenticated(!!localStorage.getItem('zenex-auth'));
-    };
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Sync active local checks in the same window (e.g. logout action)
-    const interval = setInterval(handleStorageChange, 300);
-
+    const sync = () => setIsAuthenticated(isLoggedIn());
+    window.addEventListener('storage', sync);
+    window.addEventListener(AUTH_CHANGED_EVENT, sync);
+    window.addEventListener('simsor-auth-expired', sync);
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(AUTH_CHANGED_EVENT, sync);
+      window.removeEventListener('simsor-auth-expired', sync);
     };
   }, []);
 

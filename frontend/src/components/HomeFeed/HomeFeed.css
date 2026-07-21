@@ -15,6 +15,8 @@
   flex-direction: column;
   gap: 20px;
   padding-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .home-feed-block {
@@ -334,16 +336,20 @@
 .home-post-join {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 14px;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 24px;
+  min-height: 36px;
   border-radius: 999px;
   border: none;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   cursor: pointer;
   color: var(--home-bw-bg, #fff);
   background: var(--home-bw-fg, #111);
   transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
 }
 
 .home-post-join:hover {
@@ -711,12 +717,38 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   flex-shrink: 0;
-  background: var(--home-bw-fg, #000);
-  color: var(--home-bw-bg, #fff);
+  overflow: hidden;
+  padding: 2px;
+  /* Light theme: dark disc — matches map pin */
+  background: #161618;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+
+html[data-theme='dark'] .home-post-event-chip-icon {
+  /* Dark theme: white disc — matches map pin */
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.home-post-event-chip-category {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.16));
+}
+
+/* Dark headphones etc. — invert on dark disc only (light theme), keep frame dark */
+html[data-theme='light'] .home-post-event-chip-category.is-dark-subject {
+  filter:
+    brightness(0) invert(1)
+    drop-shadow(0 1px 2px rgba(255, 255, 255, 0.14));
 }
 
 .home-post-event-chip-copy {

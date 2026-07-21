@@ -67,7 +67,7 @@ export const PostCountdown: React.FC<Props> = ({ post, joined, onToggleJoin }) =
     if (full) {
       return (
         <span className="home-post-join is-full">
-          <Users size={13} /> FULL
+          <Users size={16} /> FULL
         </span>
       );
     }
@@ -82,7 +82,7 @@ export const PostCountdown: React.FC<Props> = ({ post, joined, onToggleJoin }) =
           onToggleJoin();
         }}
       >
-        {joined ? <Check size={13} /> : <UserPlus size={13} />}
+        {joined ? <Check size={16} /> : <UserPlus size={16} />}
         {joined ? 'Joined' : 'Join'}
       </button>
     );

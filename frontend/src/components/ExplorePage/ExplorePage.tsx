@@ -8,6 +8,10 @@ import './ExplorePage.css';
 import './userLocationMarker.css';
 import './eventMapIcons.css';
 import { createEventMapIcon, SPORTS_CATEGORIES, ENTERTAINMENT_CATEGORIES, isWeightliftingCategory } from './eventMapIcons';
+import {
+  getPreferredFiltersForMain,
+  USER_INTERESTS_CHANGED_EVENT,
+} from './profileExploreInterests';
 
 const RECENT_SUBFILTERS_KEY = 'zenex-explore-recent-subfilters';
 
@@ -44,9 +48,11 @@ import {
   getEventOrganizer,
   groupEventsByLocation,
   locationKeyFromCoordinates,
+  ME_AUTHOR_ID,
   type ExploreEvent,
   openEventInGoogleMaps,
 } from './exploreEvents';
+import { canViewOnPrivateMap, canViewOnPublicMap } from './mapEventAccess';
 import {
   publishEvent,
   isJoined as isEventJoined,
@@ -54,6 +60,9 @@ import {
   type CreateEventPayload,
 } from '../HomeFeed/publishContent';
 import { useTheme } from '../../themeContext';
+import { getDabbedUpIds, DAB_UPS_CHANGED_EVENT } from '../profile/profileData';
+import { PEOPLE_LISTS_CHANGED_EVENT } from '../HomeFeed/audienceLists';
+import type { MapEventScope } from '../Navbar';
 
 const HYDERABAD_CENTER: [number, number] = [17.3969, 78.4692];
 
@@ -67,6 +76,7 @@ type ExplorePageProps = {
   onViewOrganizerProfile?: (organizerId: string) => void;
   focusTarget?: { eventId: string; coordinates: [number, number] } | null;
   onFocusHandled?: () => void;
+  mapEventScope?: MapEventScope;
 };
 
 function LocationMarker({
@@ -150,7 +160,12 @@ function MapFlyToUser({
   return null;
 }
 
-export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile, focusTarget, onFocusHandled }) => {
+export const ExplorePage: React.FC<ExplorePageProps> = ({
+  onViewOrganizerProfile,
+  focusTarget,
+  onFocusHandled,
+  mapEventScope = 'public',
+}) => {
   const { theme, toggleTheme } = useTheme();
   const { position: userPosition, heading: userHeading, status: userLocationStatus, requestLocation } =
     useUserLocation();
@@ -171,6 +186,25 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     return () => window.removeEventListener(EXPLORE_EVENTS_CHANGED_EVENT, refresh);
   }, []);
 
+  useEffect(() => {
+    const onInterests = () => setInterestsVersion((v) => v + 1);
+    window.addEventListener(USER_INTERESTS_CHANGED_EVENT, onInterests);
+    return () => window.removeEventListener(USER_INTERESTS_CHANGED_EVENT, onInterests);
+  }, []);
+
+  useEffect(() => {
+    const refreshDabbed = () => setDabbedOrganizerIds(getDabbedUpIds());
+    refreshDabbed();
+    window.addEventListener(DAB_UPS_CHANGED_EVENT, refreshDabbed);
+    return () => window.removeEventListener(DAB_UPS_CHANGED_EVENT, refreshDabbed);
+  }, []);
+
+  useEffect(() => {
+    const onListsChange = () => setPeopleListsVersion((v) => v + 1);
+    window.addEventListener(PEOPLE_LISTS_CHANGED_EVENT, onListsChange);
+    return () => window.removeEventListener(PEOPLE_LISTS_CHANGED_EVENT, onListsChange);
+  }, []);
+
   // Toggles for iOS Floating Panels
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -188,6 +222,9 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   );
   const [isMainDropdownOpen, setIsMainDropdownOpen] = useState(false);
   const [isSubFilterExpanded, setIsSubFilterExpanded] = useState(false);
+  const [interestsVersion, setInterestsVersion] = useState(0);
+  const [dabbedOrganizerIds, setDabbedOrganizerIds] = useState<string[]>(() => getDabbedUpIds());
+  const [peopleListsVersion, setPeopleListsVersion] = useState(0);
   const filterBarRef = useRef<HTMLDivElement>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     const saved = localStorage.getItem('zenex-recent-searches-v3');
@@ -406,15 +443,28 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
   const subFilterOptions =
     activeMainCategory === 'Sports' ? [...SPORTS_CATEGORIES] : [...ENTERTAINMENT_CATEGORIES];
 
-  const orderedSubFilters = useMemo(() => {
-    const recent = recentSubFiltersByMain[activeMainCategory].filter((filter) =>
-      subFilterOptions.includes(filter),
-    );
-    const rest = subFilterOptions.filter((filter) => !recent.includes(filter));
-    return [...recent, ...rest];
-  }, [subFilterOptions, recentSubFiltersByMain, activeMainCategory]);
+  const interestSubFilters = useMemo(
+    () => getPreferredFiltersForMain(activeMainCategory),
+    [activeMainCategory, interestsVersion],
+  );
 
-  const collapsedVisibleCount = Math.max(1, Math.floor(subFilterOptions.length / 2));
+  const orderedSubFilters = useMemo(() => {
+    const interests = interestSubFilters.filter((filter) => subFilterOptions.includes(filter));
+    const recent = recentSubFiltersByMain[activeMainCategory].filter(
+      (filter) => subFilterOptions.includes(filter) && !interests.includes(filter),
+    );
+    const rest = subFilterOptions.filter(
+      (filter) => !interests.includes(filter) && !recent.includes(filter),
+    );
+    return [...interests, ...recent, ...rest];
+  }, [subFilterOptions, recentSubFiltersByMain, activeMainCategory, interestSubFilters]);
+
+  /* Default collapsed size matches Entertainment’s compact chip count */
+  const entertainmentDefaultCollapsed = Math.max(1, ENTERTAINMENT_CATEGORIES.length);
+  const collapsedVisibleCount = Math.max(
+    1,
+    Math.min(subFilterOptions.length, entertainmentDefaultCollapsed),
+  );
   const hasMoreSubFilters = subFilterOptions.length > collapsedVisibleCount;
 
   const visibleSubFilters = useMemo(() => {
@@ -461,7 +511,9 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
     setIsSubFilterExpanded(false);
   };
 
-  // Filter events by category + search query
+  const dabbedOrganizerSet = useMemo(() => new Set(dabbedOrganizerIds), [dabbedOrganizerIds]);
+
+  // Filter events by category + search query + public/private map scope
   const filteredEvents = useMemo(() => {
     return events.filter((event: ExploreEvent) => {
       if (event.mainCategory !== activeMainCategory) return false;
@@ -474,6 +526,12 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
         }
       }
 
+      if (mapEventScope === 'public') {
+        if (!canViewOnPublicMap(event)) return false;
+      } else if (!canViewOnPrivateMap(event, ME_AUTHOR_ID, dabbedOrganizerSet)) {
+        return false;
+      }
+
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       return (
@@ -482,7 +540,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
         event.category.toLowerCase().includes(query)
       );
     });
-  }, [events, searchQuery, activeMainCategory, activeSubFilter]);
+  }, [events, searchQuery, activeMainCategory, activeSubFilter, mapEventScope, dabbedOrganizerSet, peopleListsVersion]);
 
   const locationGroups = useMemo(
     () => groupEventsByLocation(filteredEvents),
@@ -636,7 +694,9 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onViewOrganizerProfile
                 <button
                   key={filter}
                   type="button"
-                  className={`explore-filter-chip ${activeSubFilter === filter ? 'active' : ''}`}
+                  className={`explore-filter-chip ${activeSubFilter === filter ? 'active' : ''} ${
+                    interestSubFilters.includes(filter) ? 'explore-filter-chip--interest' : ''
+                  }`}
                   onClick={() => handleSubFilterClick(filter)}
                 >
                   {subFilterLabel(filter)}

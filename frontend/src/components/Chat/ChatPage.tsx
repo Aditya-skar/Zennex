@@ -1,13 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Bell,
+  BellOff,
   Check,
   ChevronRight,
   Image as ImageIcon,
   MoreHorizontal,
   Paperclip,
+  Pin,
   Search,
   Send,
+  Trash2,
   UserMinus,
   UserPlus,
   Users,
@@ -19,9 +23,14 @@ import { ME_AUTHOR_ID } from '../ExplorePage/exploreEvents';
 import {
   addGroupMember,
   createGroup,
+  deleteConversation,
   getAllConversations,
   getAvailableContacts,
+  isChatMuted,
+  isChatPinned,
   isGroupAdmin,
+  isJoinedCommunityChat,
+  isOwnCreatedCommunityChat,
   messagePreview,
   removeGroupMember,
   REACTION_EMOJIS,
@@ -30,18 +39,39 @@ import {
   sendTextMessage,
   sendVideoMessage,
   subscribeChatStore,
+  toggleChatMute,
+  toggleChatPin,
   toggleReaction,
   type ChatConversation,
   type ChatMember,
   type ChatMessage,
 } from './chatStore';
+import {
+  deleteOwnedCommunityByChatId,
+  getAllCommunities,
+  leaveCommunityByChatId,
+  subscribeCommunities,
+} from '../profile/communitiesStore';
 import './ChatPage.css';
 
 type ChatPageProps = {
   feedPosts: HomeFeedPost[];
   createGroupOpen?: boolean;
   onCreateGroupOpenChange?: (open: boolean) => void;
+  initialChatId?: string | null;
+  onInitialChatConsumed?: () => void;
 };
+
+type InboxFilter = 'chats' | 'communities';
+
+function matchesInboxFilter(chat: ChatConversation, filter: InboxFilter): boolean {
+  if (chat.type === 'community') {
+    if (isOwnCreatedCommunityChat(chat)) return filter === 'chats';
+    if (isJoinedCommunityChat(chat)) return filter === 'communities';
+    return false;
+  }
+  return filter === 'chats';
+}
 
 function groupReactions(reactions: ChatMessage['reactions']): { emoji: string; count: number; mine: boolean }[] {
   const map = new Map<string, { count: number; mine: boolean }>();
@@ -56,17 +86,30 @@ export default function ChatPage({
   feedPosts,
   createGroupOpen = false,
   onCreateGroupOpenChange,
+  initialChatId = null,
+  onInitialChatConsumed,
 }: ChatPageProps) {
   const [conversations, setConversations] = useState<ChatConversation[]>(() => getAllConversations());
   const [activeChatId, setActiveChatId] = useState<string>(() => getAllConversations()[0]?.id ?? '');
   const [draft, setDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>('chats');
   const [mobileShowConversation, setMobileShowConversation] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(createGroupOpen);
 
   useEffect(() => {
     if (createGroupOpen) setShowCreateGroup(true);
   }, [createGroupOpen]);
+
+  useEffect(() => {
+    if (!initialChatId) return;
+    const target = getAllConversations().find((c) => c.id === initialChatId);
+    if (target && isJoinedCommunityChat(target)) setInboxFilter('communities');
+    else setInboxFilter('chats');
+    setActiveChatId(initialChatId);
+    setMobileShowConversation(true);
+    onInitialChatConsumed?.();
+  }, [initialChatId, onInitialChatConsumed]);
 
   const closeCreateGroup = () => {
     setShowCreateGroup(false);
@@ -79,12 +122,19 @@ export default function ChatPage({
   const [reactionTarget, setReactionTarget] = useState<{ chatId: string; messageId: string } | null>(null);
   const [groupName, setGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [sessionActionTarget, setSessionActionTarget] = useState<ChatConversation | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<number | null>(null);
+  const sessionLongPressTimer = useRef<number | null>(null);
+  const sessionLongPressTriggered = useRef(false);
 
-  const refresh = useCallback(() => setConversations(getAllConversations()), []);
+  const refresh = useCallback(() => {
+    getAllCommunities();
+    setConversations(getAllConversations());
+  }, []);
 
   useEffect(() => subscribeChatStore(refresh), [refresh]);
+  useEffect(() => subscribeCommunities(refresh), [refresh]);
 
   const activeChat = useMemo(
     () => conversations.find((c) => c.id === activeChatId) ?? conversations[0],
@@ -94,15 +144,93 @@ export default function ChatPage({
   const contacts = useMemo(() => getAvailableContacts(), []);
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter(
-      (c) =>
+    return conversations.filter((c) => {
+      if (!matchesInboxFilter(c, inboxFilter)) return false;
+      if (!q) return true;
+      return (
         c.name.toLowerCase().includes(q) ||
         messagePreview(c.messages[c.messages.length - 1] ?? ({} as ChatMessage))
           .toLowerCase()
-          .includes(q),
-    );
-  }, [conversations, searchQuery]);
+          .includes(q)
+      );
+    });
+  }, [conversations, searchQuery, inboxFilter]);
+
+  const handleTogglePin = (chatId: string) => {
+    toggleChatPin(chatId);
+    refresh();
+  };
+
+  const clearSessionLongPress = () => {
+    if (sessionLongPressTimer.current) {
+      clearTimeout(sessionLongPressTimer.current);
+      sessionLongPressTimer.current = null;
+    }
+  };
+
+  const handleSessionPointerDown = (session: ChatConversation) => {
+    sessionLongPressTriggered.current = false;
+    clearSessionLongPress();
+    sessionLongPressTimer.current = window.setTimeout(() => {
+      sessionLongPressTriggered.current = true;
+      setSessionActionTarget(session);
+    }, 480);
+  };
+
+  const handleSessionPointerUp = () => {
+    clearSessionLongPress();
+  };
+
+  const handleSessionClick = (id: string) => {
+    if (sessionLongPressTriggered.current) {
+      sessionLongPressTriggered.current = false;
+      return;
+    }
+    openConversation(id);
+  };
+
+  const closeSessionActions = () => setSessionActionTarget(null);
+
+  const handleSessionPinAction = () => {
+    if (!sessionActionTarget) return;
+    handleTogglePin(sessionActionTarget.id);
+    closeSessionActions();
+  };
+
+  const handleSessionMuteAction = () => {
+    if (!sessionActionTarget) return;
+    toggleChatMute(sessionActionTarget.id);
+    refresh();
+    closeSessionActions();
+  };
+
+  const handleSessionDeleteAction = () => {
+    if (!sessionActionTarget) return;
+    const { id, type } = sessionActionTarget;
+    if (type === 'community') {
+      if (isOwnCreatedCommunityChat(sessionActionTarget)) {
+        deleteOwnedCommunityByChatId(id);
+      } else {
+        leaveCommunityByChatId(id);
+      }
+    }
+    deleteConversation(id);
+    if (activeChatId === id) {
+      setMobileShowConversation(false);
+    }
+    closeSessionActions();
+    refresh();
+  };
+
+  useEffect(() => {
+    if (filteredConversations.length === 0) {
+      setMobileShowConversation(false);
+      return;
+    }
+    if (!filteredConversations.some((c) => c.id === activeChatId)) {
+      setActiveChatId(filteredConversations[0].id);
+    }
+  }, [filteredConversations, activeChatId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -256,45 +384,96 @@ export default function ChatPage({
       <div className={`chat-shell ${mobileShowConversation ? 'show-thread' : ''}`}>
         {/* Conversation list */}
         <aside className="chat-list-panel">
-          <div className="chat-search-wrap">
-            <Search size={16} />
-            <input
-              type="search"
-              placeholder="Search conversations"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div className="chat-list-toolbar">
+            <div className="chat-search-wrap">
+              <Search size={16} />
+              <input
+                type="search"
+                placeholder="Search conversations"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            <div className="chat-inbox-filters" role="tablist" aria-label="Inbox filters">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={inboxFilter === 'chats'}
+                className={`chat-inbox-filter${inboxFilter === 'chats' ? ' active' : ''}`}
+                onClick={() => setInboxFilter('chats')}
+              >
+                Chats
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={inboxFilter === 'communities'}
+                className={`chat-inbox-filter${inboxFilter === 'communities' ? ' active' : ''}`}
+                onClick={() => setInboxFilter('communities')}
+              >
+                Communities
+              </button>
+            </div>
           </div>
 
           <div className="chat-session-list">
-            {filteredConversations.map((session) => {
+            {filteredConversations.length === 0 ? (
+              <div className="chat-inbox-empty">
+                <p>
+                  {inboxFilter === 'communities'
+                    ? 'No joined communities yet. Join a public community from someone\'s profile.'
+                    : 'No chats yet. Start a conversation or create a group.'}
+                </p>
+              </div>
+            ) : (
+              filteredConversations.map((session) => {
               const last = session.messages[session.messages.length - 1];
+              const pinned = isChatPinned(session.id);
+              const muted = isChatMuted(session.id);
               return (
-                <button
+                <div
                   key={session.id}
-                  type="button"
-                  className={`chat-session-row ${session.id === activeChatId ? 'active' : ''}`}
-                  onClick={() => openConversation(session.id)}
+                  className={`chat-session-row-wrap${pinned ? ' is-pinned' : ''}${muted ? ' is-muted' : ''}`}
                 >
-                  <div className="chat-session-avatar-wrap">
-                    <img src={session.avatar} alt="" className="chat-session-avatar" />
-                    {session.online && <span className="chat-online-dot" />}
-                    {session.type !== 'dm' && (
-                      <span className="chat-group-badge">
-                        {session.type === 'event' ? 'EV' : 'GC'}
+                  <button
+                    type="button"
+                    className="chat-session-row"
+                    onClick={() => handleSessionClick(session.id)}
+                    onPointerDown={() => handleSessionPointerDown(session)}
+                    onPointerUp={handleSessionPointerUp}
+                    onPointerLeave={handleSessionPointerUp}
+                    onPointerCancel={handleSessionPointerUp}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setSessionActionTarget(session);
+                    }}
+                  >
+                    <div className="chat-session-avatar-wrap">
+                      <img src={session.avatar} alt="" className="chat-session-avatar" />
+                      {session.online && <span className="chat-online-dot" />}
+                      {session.type !== 'dm' && (
+                        <span className="chat-group-badge">
+                          {session.type === 'event' ? 'EV' : session.type === 'community' ? 'CM' : 'GC'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="chat-session-body">
+                      <span className="chat-session-name">
+                        {pinned && <Pin size={11} className="chat-session-status-icon" aria-hidden="true" />}
+                        {muted && <BellOff size={11} className="chat-session-status-icon" aria-hidden="true" />}
+                        {session.name}
                       </span>
-                    )}
-                  </div>
-                  <div className="chat-session-body">
-                    <span className="chat-session-name">{session.name}</span>
-                    <span className="chat-session-preview">
-                      {last ? messagePreview(last) : 'No messages yet'}
-                    </span>
-                  </div>
-                  <span className="chat-session-time">{last?.time ?? ''}</span>
-                </button>
+                      <span className="chat-session-preview">
+                        {last ? messagePreview(last) : 'No messages yet'}
+                      </span>
+                    </div>
+                    <span className="chat-session-time">{last?.time ?? ''}</span>
+                  </button>
+                </div>
               );
-            })}
+            })
+            )}
           </div>
         </aside>
 
@@ -330,7 +509,7 @@ export default function ChatPage({
                 {activeChat.type !== 'dm' && <ChevronRight size={16} className="chat-thread-chevron" />}
               </button>
 
-              {activeChat.type === 'group' && isGroupAdmin(activeChat) && (
+              {(activeChat.type === 'group' || activeChat.type === 'community') && isGroupAdmin(activeChat) && (
                 <button
                   type="button"
                   className="chat-icon-btn"
@@ -465,7 +644,7 @@ export default function ChatPage({
                       {member.id === activeChat.adminId ? 'Admin' : member.role ?? 'Member'}
                     </span>
                   </div>
-                  {activeChat.type === 'group' &&
+                  {(activeChat.type === 'group' || activeChat.type === 'community') &&
                     isGroupAdmin(activeChat) &&
                     member.id !== ME_AUTHOR_ID && (
                       <button
@@ -481,7 +660,7 @@ export default function ChatPage({
               ))}
             </div>
 
-            {activeChat.type === 'group' && isGroupAdmin(activeChat) && (
+            {(activeChat.type === 'group' || activeChat.type === 'community') && isGroupAdmin(activeChat) && (
               <AddMemberSection
                 chatId={activeChat.id}
                 existingIds={activeChat.members.map((m) => m.id)}
@@ -549,6 +728,33 @@ export default function ChatPage({
                 {v.label}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+
+      {sessionActionTarget && (
+        <div className="chat-modal-overlay chat-session-action-overlay" onClick={closeSessionActions}>
+          <div className="chat-session-action-sheet animate-slideUp" onClick={(e) => e.stopPropagation()}>
+            <p className="chat-session-action-title">{sessionActionTarget.name}</p>
+            <button type="button" className="chat-session-action-option" onClick={handleSessionPinAction}>
+              <Pin size={18} />
+              {isChatPinned(sessionActionTarget.id) ? 'Unpin' : 'Pin'}
+            </button>
+            <button type="button" className="chat-session-action-option" onClick={handleSessionMuteAction}>
+              {isChatMuted(sessionActionTarget.id) ? <BellOff size={18} /> : <Bell size={18} />}
+              {isChatMuted(sessionActionTarget.id) ? 'Unmute' : 'Mute'}
+            </button>
+            <button
+              type="button"
+              className="chat-session-action-option chat-session-action-option--danger"
+              onClick={handleSessionDeleteAction}
+            >
+              <Trash2 size={18} />
+              Delete
+            </button>
+            <button type="button" className="chat-session-action-cancel" onClick={closeSessionActions}>
+              Cancel
+            </button>
           </div>
         </div>
       )}
