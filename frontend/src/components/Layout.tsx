@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
 import { Navbar, TabType, MapEventScope } from './Navbar';
 import { useTheme } from '../themeContext';
 import ProfileView from './profile/ProfileView';
@@ -29,14 +30,15 @@ import {
 import { MembershipModal, getSavedPlan, PLAN_CHANGE_EVENT, PlanType } from './Membership/Membership';
 import ExplorePage from './ExplorePage/ExplorePage';
 import HomePostCard from './HomeFeed/HomePostCard';
-import { HOME_FEED_POSTS, type HomeFeedPost } from './HomeFeed/homeFeed';
+import { HOME_FEED_POSTS, type HomeFeedPost, type HomeMainCategory } from './HomeFeed/homeFeed';
 import { buildFeed, FEED_CHANGED_EVENT } from './HomeFeed/feedAlgorithm';
+import { loadFeedPosts } from './HomeFeed/feedSource';
 import { CreateEventModal } from './ExplorePage/CreateEventModal';
 import DiscoverPage from './DiscoverFeed/DiscoverPage';
 import ChatPage from './Chat/ChatPage';
 import {
   loadUserPosts,
-  publishEvent,
+  submitCreateEvent,
   USER_POSTS_CHANGED_EVENT,
   type CreateEventPayload,
 } from './HomeFeed/publishContent';
@@ -58,7 +60,11 @@ export const Layout: React.FC = () => {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [exploreFocus, setExploreFocus] = useState<{ eventId: string; coordinates: [number, number] } | null>(null);
+  const [exploreFocus, setExploreFocus] = useState<{
+    eventId: string;
+    coordinates: [number, number];
+    mainCategory?: HomeMainCategory;
+  } | null>(null);
   const navigate = useNavigate();
 
   // Membership states
@@ -109,7 +115,13 @@ export const Layout: React.FC = () => {
   };
 
   const handleViewPostLocation = (post: HomeFeedPost) => {
-    setExploreFocus({ eventId: post.eventId, coordinates: post.coordinates });
+    // Carry the category through — Explore only renders pins for the active
+    // tab, so without it a Sports-tab map silently drops an Entertainment pin.
+    setExploreFocus({
+      eventId: post.eventId,
+      coordinates: post.coordinates,
+      mainCategory: post.mainCategory,
+    });
     setActiveTab('explore');
   };
 
@@ -140,11 +152,45 @@ export const Layout: React.FC = () => {
     localStorage.setItem('zenex-map-event-scope', mapEventScope);
   }, [mapEventScope]);
 
-  const feed = useMemo(() => buildFeed([...loadUserPosts(), ...HOME_FEED_POSTS]), [feedVersion]);
+  // Posts themselves come from `feedSource.ts` (real /api/posts once a backend
+  // is configured, else the same localStorage + seed array as before) — kept
+  // as state since that load is async, while `buildFeed`'s scoring stays
+  // synchronous. Re-fetched whenever `feedVersion` bumps (new post, follow
+  // change, tab re-open) so Home reflects the latest shared data.
+  const [feedPosts, setFeedPosts] = useState<HomeFeedPost[]>(() => [
+    ...loadUserPosts(),
+    ...HOME_FEED_POSTS,
+  ]);
 
-  const handleHomeCreateEvent = (eventData: Record<string, unknown>) => {
-    publishEvent(eventData as unknown as CreateEventPayload);
-    bumpFeed();
+  useEffect(() => {
+    let cancelled = false;
+    loadFeedPosts()
+      .then((posts) => {
+        if (!cancelled) setFeedPosts(posts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [feedVersion]);
+
+  const feed = useMemo(() => buildFeed(feedPosts), [feedPosts]);
+
+  const handleHomeCreateEvent = async (eventData: Record<string, unknown>) => {
+    try {
+      const created = await submitCreateEvent(eventData as unknown as CreateEventPayload);
+      bumpFeed();
+      // Queue the map focus so the new pin is already selected whenever the
+      // user switches to Explore, without yanking them off Home right now.
+      setExploreFocus({
+        eventId: created.id,
+        coordinates: created.coordinates,
+        mainCategory: created.mainCategory,
+      });
+      toast.success('Event created & posted to Home!');
+    } catch {
+      toast.error('Could not create the event. Please try again.');
+    }
   };
 
   // Handle resizing to collapse sidebar on tablet view initially

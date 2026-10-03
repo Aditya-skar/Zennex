@@ -34,6 +34,8 @@ import HomePostCard from '../HomeFeed/HomePostCard';
 import { FEED_CHANGED_EVENT, isFollowing, toggleFollow } from '../HomeFeed/feedAlgorithm';
 import { USER_POSTS_CHANGED_EVENT } from '../HomeFeed/publishContent';
 import { saveProfile } from '../../api';
+import { isBackendEnabled } from '../../api/client';
+import { uploadFile } from '../../api/uploadApi';
 import {
   DAB_UPS_CHANGED_EVENT,
   getAchievementWins,
@@ -66,6 +68,7 @@ import {
   subscribeCommunities,
   type Community,
 } from './communitiesStore';
+import { createDirectMessage } from '../Chat/chatStore';
 import './ProfileView.css';
 
 type TabType = 'posts' | 'events' | 'achievements' | 'saved' | 'communities';
@@ -235,6 +238,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     bumpStats();
   };
 
+  const [isStartingChat, setIsStartingChat] = useState(false);
+  const handleMessage = async () => {
+    if (!profileUserId || isStartingChat) return;
+    setIsStartingChat(true);
+    const conversation = await createDirectMessage(profileUserId);
+    setIsStartingChat(false);
+    if (conversation) {
+      onOpenChat?.(conversation.id);
+    } else {
+      toast.error('Messaging is unavailable right now');
+    }
+  };
+
   // Rank ladder modal
   const [isRankModalOpen, setIsRankModalOpen] = useState(false);
   const [eventsBreakdownOpen, setEventsBreakdownOpen] = useState(false);
@@ -388,6 +404,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Username validation state
   const [usernameStatus, setUsernameStatus] = useState<{
@@ -505,6 +522,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return canvas.toDataURL('image/jpeg', 0.9);
   };
 
+  /** Cropped avatars are produced as base64 data URLs (canvas.toDataURL);
+   * a live backend needs a real File/Blob to POST to /api/uploads. */
+  function dataUrlToBlob(dataUrl: string): Blob {
+    const [header, base64] = dataUrl.split(',');
+    const mime = /data:(.*?);base64/.exec(header)?.[1] ?? 'image/jpeg';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
   const handleRemovePhoto = () => {
     setTempAvatar('https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&h=300&q=80');
     setUploadedImage(null);
@@ -531,7 +559,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (cropped) finalAvatar = cropped;
     }
 
+    setIsSavingProfile(true);
     try {
+      // A live backend gets the real cropped photo uploaded to R2/local-disk
+      // storage (see backend/app/storage.py) so `avatarUrl` becomes a real,
+      // stable server URL instead of a multi-hundred-KB base64 string stuffed
+      // into the users table.
+      if (isBackendEnabled() && uploadedImage && finalAvatar.startsWith('data:')) {
+        try {
+          const uploaded = await uploadFile(dataUrlToBlob(finalAvatar), 'avatar.jpg');
+          finalAvatar = uploaded.url;
+        } catch {
+          toast.error('Could not upload the photo — saving the rest of your profile.');
+        }
+      }
+
       const saved = await saveProfile({
         fullName: tempFullName.trim(),
         username: tempUsername.trim().toLowerCase(),
@@ -562,6 +604,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not save profile');
+    } finally {
+      setIsSavingProfile(false);
     }
   };
 
@@ -979,6 +1023,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               >
                 {isBoosting ? 'Boosting' : 'Boost'}
               </button>
+              {isBackendEnabled() && (
+                <button
+                  type="button"
+                  className="profile-action-btn"
+                  onClick={handleMessage}
+                  disabled={isStartingChat}
+                >
+                  {isStartingChat ? 'Opening…' : 'Message'}
+                </button>
+              )}
             </div>
           )}
         </section>
@@ -1628,6 +1682,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     type="button" 
                     className="edit-form-btn cancel-btn"
                     onClick={() => setIsEditModalOpen(false)}
+                    disabled={isSavingProfile}
                   >
                     Cancel
                   </button>
@@ -1635,8 +1690,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <button 
                     type="submit" 
                     className="edit-form-btn save-btn"
+                    disabled={isSavingProfile}
                   >
-                    Save Changes
+                    {isSavingProfile ? 'Saving…' : 'Save Changes'}
                   </button>
                 </div>
 

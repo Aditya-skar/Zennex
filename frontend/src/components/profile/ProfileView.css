@@ -334,14 +334,14 @@ html.zenex-mobile-app .profile-page {
 .profile-hero-actions {
   grid-column: 1 / -1;
   grid-row: 2;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 8px;
   margin-top: 0;
   align-self: end;
 }
 
 .profile-hero-actions .profile-action-btn {
+  flex: 1;
   height: 38px;
   font-size: 12px;
 }

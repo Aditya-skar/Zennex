@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'react-hot-toast';
 import {
   X,
   MapPin,
@@ -26,6 +27,8 @@ import {
   PEOPLE_LISTS_CHANGED_EVENT,
   type PeopleList,
 } from '../HomeFeed/audienceLists';
+import { isBackendEnabled } from '../../api/client';
+import { uploadFile } from '../../api/uploadApi';
 
 const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const OSM_ATTRIBUTION =
@@ -111,6 +114,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [showLocationResults, setShowLocationResults] = useState(false);
   const [media, setMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [limitedSlots, setLimitedSlots] = useState(false);
   const [slots, setSlots] = useState('10');
@@ -225,7 +229,25 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
 
   const handleMediaChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
+
+    // Live backend: upload the real file to R2/local-disk storage (see
+    // backend/app/storage.py) and use the server's public URL, instead of
+    // the base64/blob placeholder below that never left this browser tab.
+    if (isBackendEnabled()) {
+      setIsUploadingMedia(true);
+      try {
+        const uploaded = await uploadFile(file, file.name);
+        setMedia({ type: uploaded.type, url: uploaded.url });
+      } catch {
+        toast.error('Could not upload the file. Please try again.');
+      } finally {
+        setIsUploadingMedia(false);
+      }
+      return;
+    }
+
     if (file.type.startsWith('image/')) {
       try {
         const url = await downscaleImage(file);
@@ -236,7 +258,6 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     } else if (file.type.startsWith('video/')) {
       setMedia({ type: 'video', url: URL.createObjectURL(file) });
     }
-    e.target.value = '';
   };
 
   const toggleLimitedSlots = () => {
@@ -267,6 +288,7 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     setLocationResults([]);
     setShowLocationResults(false);
     setMedia(null);
+    setIsUploadingMedia(false);
     setLimitedSlots(false);
     setSlots('10');
     setJoinCloseDate('');
@@ -278,6 +300,10 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploadingMedia) {
+      toast.error('Please wait for the upload to finish.');
+      return;
+    }
     if (!eventName || !venue || !date || !time || !position) {
       alert('Please fill out all required fields and select a location on the map.');
       return;
@@ -319,6 +345,14 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
     else if (subCategory === 'Pickleball') image = 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=600&q=80';
     else if (subCategory === 'Skateboard') image = 'https://images.unsplash.com/photo-1542770665-66a0b85d33f5?auto=format&fit=crop&w=600&q=80';
     else if (subCategory === 'Swimming') image = 'https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=600&q=80';
+
+    // Once a live backend is configured, an uploaded poster photo is a real,
+    // stable server URL — use it as the map pin's cover instead of the fixed
+    // per-category stock photo. Mock mode keeps the stock photo unchanged
+    // (its media is often just a local blob: URL that won't survive reload).
+    if (isBackendEnabled() && media?.type === 'image') {
+      image = media.url;
+    }
 
     onSubmit({
       id: Date.now().toString(),
@@ -672,9 +706,14 @@ export const CreateEventModal: React.FC<CreateEventModalProps> = ({ isOpen, onCl
                     type="button"
                     className="media-upload-btn"
                     onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingMedia}
                   >
-                    <ImagePlus size={18} />
-                    <span>Upload image or video</span>
+                    {isUploadingMedia ? (
+                      <Loader2 size={18} className="media-upload-spinner" />
+                    ) : (
+                      <ImagePlus size={18} />
+                    )}
+                    <span>{isUploadingMedia ? 'Uploading…' : 'Upload image or video'}</span>
                   </button>
                 ) : (
                   <div className="media-preview">

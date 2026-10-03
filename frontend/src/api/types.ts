@@ -36,6 +36,109 @@ export type EventDto = {
   image: string;
   organizerId: string;
   gameAccess?: 'public' | 'invite';
+  /** Frontend-local people-list ids selected for an invite-only event. */
+  inviteListIds?: string[];
+  /** Resolved snapshot of invited member ids, taken at publish time. */
+  invitedMemberIds?: string[];
+  /** Real event start time (ISO), added in Phase 3 — see backend/PHASE3.md. */
+  startsAt?: string | null;
+};
+
+export type PostType = 'poster' | 'text' | 'video';
+export type PostVisibility = 'public' | 'private';
+export type RegistrationType = 'open' | 'limited';
+
+/** Mirrors backend `PostDto` — the real, shared version of HomeFeedPost. */
+export type PostDto = {
+  id: string;
+  type: PostType;
+  authorId: string;
+  caption: string;
+  image?: string | null;
+  videoUrl?: string | null;
+  visibility: PostVisibility;
+  isReshared: boolean;
+  originalHostId?: string | null;
+  eventId: string;
+  eventTitle: string;
+  category: string;
+  mainCategory: MainCategory;
+  eventDateISO?: string | null;
+  eventDateLabel: string;
+  eventLocation: string;
+  coordinates: [number, number];
+  createdAt: string;
+  likes: number;
+  likedByMe: boolean;
+  comments: number;
+  registrationType?: RegistrationType | null;
+  slotsTotal?: number | null;
+  slotsFilled?: number | null;
+  registrationDeadlineISO?: string | null;
+};
+
+export type PostCreatePayload = {
+  eventId: string;
+  type?: PostType;
+  caption?: string;
+  image?: string | null;
+  videoUrl?: string | null;
+  visibility?: PostVisibility;
+  isReshared?: boolean;
+  originalHostId?: string | null;
+  registrationType?: RegistrationType | null;
+  slotsTotal?: number | null;
+  registrationDeadline?: string | null;
+};
+
+export type LikeResponseDto = {
+  liked: boolean;
+  likes: number;
+};
+
+export type FollowingListDto = {
+  userIds: string[];
+};
+
+/** Reasons the client can report directly — 'like'/'repost' are bumped
+ * automatically server-side as a side effect of the real action instead
+ * (see backend/app/affinity.py). */
+export type AffinityReason =
+  | 'dwell'
+  | 'join'
+  | 'view_location'
+  | 'open_profile'
+  | 'explore_subfilter'
+  | 'explore_pin_open'
+  | 'discover_tile_open';
+
+export type AffinityTrackPayload = {
+  category: string;
+  mainCategory: MainCategory;
+  reason: AffinityReason;
+  seconds?: number;
+  authorId?: string;
+};
+
+export type AffinityMineDto = {
+  categories: Record<string, number>;
+  authors: Record<string, number>;
+};
+
+export type UploadResponseDto = {
+  url: string;
+  type: 'image' | 'video';
+};
+
+/** Minimal public profile for rendering an event's host. Not private data. */
+export type PublicUserDto = {
+  id: string;
+  username: string;
+  fullName: string;
+  avatarUrl: string;
+  bio: string;
+  location: string;
+  eventsHosted: number;
 };
 
 export type DabUpStatus = 'none' | 'pending' | 'dabbed_up';
@@ -50,6 +153,83 @@ export type ConversationPreview = {
   unread: number;
 };
 
+/** Chat Phase — real, shared DM/group chat backed by Supabase Postgres +
+ * Realtime. Mirrors backend `ConversationDto`/`MessageDto` in
+ * backend/app/schemas.py. Event group chats and communities are NOT part of
+ * this: they stay on `eventChats.ts` / `communitiesStore.ts`. */
+export type ChatConversationType = 'dm' | 'group';
+export type ChatMessageKind = 'text' | 'image' | 'video' | 'post';
+
+export type ChatMemberDto = {
+  id: string;
+  name: string;
+  avatarUrl: string;
+  role: 'admin' | 'member';
+};
+
+export type SharedPostPreviewDto = {
+  postId: string;
+  caption: string;
+  eventTitle: string;
+  image?: string | null;
+  videoUrl?: string | null;
+  authorName: string;
+  authorAvatar: string;
+  postType: PostType;
+};
+
+export type ChatReactionDto = {
+  emoji: string;
+  userId: string;
+  userName: string;
+};
+
+export type MessageDto = {
+  id: string;
+  conversationId: string;
+  authorId: string;
+  kind: ChatMessageKind;
+  text?: string | null;
+  mediaUrl?: string | null;
+  sharedPost?: SharedPostPreviewDto | null;
+  reactions: ChatReactionDto[];
+  createdAt: string;
+};
+
+export type ConversationDto = {
+  id: string;
+  type: ChatConversationType;
+  name: string;
+  avatarUrl: string;
+  adminId?: string | null;
+  members: ChatMemberDto[];
+  lastMessage?: MessageDto | null;
+  unread: number;
+  pinned: boolean;
+  muted: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConversationCreatePayload = {
+  type: ChatConversationType;
+  memberIds: string[];
+  name?: string;
+};
+
+export type MessageCreatePayload = {
+  kind: ChatMessageKind;
+  text?: string;
+  mediaUrl?: string;
+  sharedPostId?: string;
+};
+
+export type ConversationPrefsPayload = {
+  pinned?: boolean;
+  muted?: boolean;
+  hidden?: boolean;
+};
+
 /** Canonical REST paths the backend should implement. */
 export const API_ROUTES = {
   health: '/api/health',
@@ -62,6 +242,22 @@ export const API_ROUTES = {
   eventById: (id: string) => `/api/events/${id}`,
   dabUps: '/api/dab-ups',
   dabUpRequest: '/api/dab-ups/request',
+  userPublic: (userId: string) => `/api/users/${userId}/public`,
+  users: '/api/users',
   conversations: '/api/conversations',
+  conversationById: (id: string) => `/api/conversations/${id}`,
+  conversationRead: (id: string) => `/api/conversations/${id}/read`,
+  conversationPrefs: (id: string) => `/api/conversations/${id}/prefs`,
+  conversationMembers: (id: string) => `/api/conversations/${id}/members`,
+  conversationMemberById: (id: string, userId: string) => `/api/conversations/${id}/members/${userId}`,
   messages: (conversationId: string) => `/api/conversations/${conversationId}/messages`,
+  messageReactions: (messageId: string) => `/api/messages/${messageId}/reactions`,
+  posts: '/api/posts',
+  postById: (id: string) => `/api/posts/${id}`,
+  postLike: (id: string) => `/api/posts/${id}/like`,
+  followingMine: '/api/follows/mine',
+  followUser: (userId: string) => `/api/follows/${userId}`,
+  affinityTrack: '/api/affinity/track',
+  affinityMine: '/api/affinity/mine',
+  uploads: '/api/uploads',
 } as const;

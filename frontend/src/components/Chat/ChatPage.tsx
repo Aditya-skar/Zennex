@@ -20,10 +20,14 @@ import {
 } from 'lucide-react';
 import type { HomeFeedPost } from '../HomeFeed/homeFeed';
 import { ME_AUTHOR_ID } from '../ExplorePage/exploreEvents';
+import { isBackendEnabled } from '../../api/client';
 import {
   addGroupMember,
+  closeRemoteConversationRealtime,
+  createDirectMessage,
   createGroup,
   deleteConversation,
+  ensureRemoteMessagesLoaded,
   getAllConversations,
   getAvailableContacts,
   isChatMuted,
@@ -31,7 +35,11 @@ import {
   isGroupAdmin,
   isJoinedCommunityChat,
   isOwnCreatedCommunityChat,
+  isSomeoneTyping,
+  markConversationReadIfRemote,
   messagePreview,
+  notifyTyping,
+  openRemoteConversationRealtime,
   removeGroupMember,
   REACTION_EMOJIS,
   SAMPLE_VIDEOS,
@@ -123,14 +131,19 @@ export default function ChatPage({
   const [groupName, setGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [sessionActionTarget, setSessionActionTarget] = useState<ChatConversation | null>(null);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [startingChatWith, setStartingChatWith] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<ChatMember[]>(() => getAvailableContacts());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<number | null>(null);
   const sessionLongPressTimer = useRef<number | null>(null);
   const sessionLongPressTriggered = useRef(false);
+  const lastTypingBroadcastRef = useRef(0);
 
   const refresh = useCallback(() => {
     getAllCommunities();
     setConversations(getAllConversations());
+    setContacts(getAvailableContacts());
   }, []);
 
   useEffect(() => subscribeChatStore(refresh), [refresh]);
@@ -141,7 +154,18 @@ export default function ChatPage({
     [conversations, activeChatId],
   );
 
-  const contacts = useMemo(() => getAvailableContacts(), []);
+  // Opens the realtime channel (new messages + presence/typing) for whichever
+  // conversation is active, loads its full history on first open, and marks
+  // it read. All four helpers are no-ops for local (event/community/mock)
+  // chat ids, so it's safe to call unconditionally on every switch.
+  useEffect(() => {
+    if (!activeChatId) return;
+    ensureRemoteMessagesLoaded(activeChatId);
+    markConversationReadIfRemote(activeChatId);
+    openRemoteConversationRealtime(activeChatId);
+    return () => closeRemoteConversationRealtime(activeChatId);
+  }, [activeChatId]);
+
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return conversations.filter((c) => {
@@ -249,12 +273,33 @@ export default function ChatPage({
     setDraft('');
   };
 
-  const handleCreateGroup = () => {
-    const created = createGroup(groupName, selectedMembers);
+  const handleDraftChange = (value: string) => {
+    setDraft(value);
+    if (!activeChat) return;
+    // Throttled — a typing broadcast per keystroke is unnecessary chatter.
+    const now = Date.now();
+    if (now - lastTypingBroadcastRef.current > 2000) {
+      lastTypingBroadcastRef.current = now;
+      notifyTyping(activeChat.id);
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    const created = await createGroup(groupName, selectedMembers);
     if (created) {
       closeCreateGroup();
       setGroupName('');
       setSelectedMembers([]);
+      openConversation(created.id);
+    }
+  };
+
+  const handleStartDirectMessage = async (userId: string) => {
+    setStartingChatWith(userId);
+    const created = await createDirectMessage(userId);
+    setStartingChatWith(null);
+    if (created) {
+      setShowNewChat(false);
       openConversation(created.id);
     }
   };
@@ -395,6 +440,17 @@ export default function ChatPage({
               />
             </div>
 
+            {isBackendEnabled() && (
+              <button
+                type="button"
+                className="chat-icon-btn"
+                aria-label="New chat"
+                onClick={() => setShowNewChat(true)}
+              >
+                <UserPlus size={18} />
+              </button>
+            )}
+
             <div className="chat-inbox-filters" role="tablist" aria-label="Inbox filters">
               <button
                 type="button"
@@ -499,11 +555,13 @@ export default function ChatPage({
                 <div className="chat-thread-user-text">
                   <span className="chat-thread-name">{activeChat.name}</span>
                   <span className="chat-thread-status">
-                    {activeChat.type === 'dm'
-                      ? activeChat.online
-                        ? 'Active now'
-                        : 'Offline'
-                      : activeChat.subtitle}
+                    {isSomeoneTyping(activeChat.id)
+                      ? 'Typing…'
+                      : activeChat.type === 'dm'
+                        ? activeChat.online
+                          ? 'Active now'
+                          : 'Offline'
+                        : activeChat.subtitle}
                   </span>
                 </div>
                 {activeChat.type !== 'dm' && <ChevronRight size={16} className="chat-thread-chevron" />}
@@ -553,7 +611,7 @@ export default function ChatPage({
                 className="chat-composer-input"
                 placeholder="Message..."
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => handleDraftChange(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               />
 
@@ -618,6 +676,41 @@ export default function ChatPage({
             >
               Create group
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* New direct message picker */}
+      {showNewChat && (
+        <div className="chat-modal-overlay" onClick={() => setShowNewChat(false)}>
+          <div className="chat-modal" onClick={(e) => e.stopPropagation()}>
+            <header className="chat-modal-header">
+              <h3>New message</h3>
+              <button type="button" className="chat-icon-btn" onClick={() => setShowNewChat(false)}>
+                <X size={18} />
+              </button>
+            </header>
+
+            <p className="chat-modal-label">Message someone</p>
+            <div className="chat-member-pick-list">
+              {contacts.filter((c) => c.id !== ME_AUTHOR_ID).length === 0 && (
+                <p className="chat-modal-label">No one to message yet.</p>
+              )}
+              {contacts
+                .filter((c) => c.id !== ME_AUTHOR_ID)
+                .map((contact) => (
+                  <button
+                    key={contact.id}
+                    type="button"
+                    className="chat-member-pick"
+                    disabled={startingChatWith === contact.id}
+                    onClick={() => handleStartDirectMessage(contact.id)}
+                  >
+                    <img src={contact.avatar} alt="" />
+                    <span>{contact.name}</span>
+                  </button>
+                ))}
+            </div>
           </div>
         </div>
       )}

@@ -3,8 +3,10 @@ import {
   ORGANIZER_BY_ID,
   ME_AUTHOR_ID,
   getCurrentUserOrganizer,
+  getCurrentViewerId,
   type EventOrganizer,
 } from '../ExplorePage/exploreEvents';
+import type { PostDto } from '../../api/types';
 
 export { ME_AUTHOR_ID, getCurrentUserOrganizer };
 
@@ -46,7 +48,15 @@ export type HomeFeedPost = {
   eventLocation: string;
   coordinates: [number, number];
   postedAgo: string;
+  /** Real creation timestamp (ISO) — only present for backend-sourced posts.
+   * Used for precise recency scoring instead of parsing `postedAgo`, see
+   * `hoursSincePosted` below. */
+  createdAtISO?: string;
   likes: number;
+  /** Whether the current user has liked this post — only meaningful (and
+   * only ever true) for backend-sourced posts; mock-mode posts have no
+   * server-tracked like state so `HomePostCard` defaults to unliked. */
+  likedByMe?: boolean;
   comments: number;
   /** Registration model – defaults to 'open' when omitted. */
   registrationType?: RegistrationType;
@@ -89,8 +99,17 @@ export function getHostRating(post: HomeFeedPost): { rating: number; count: numb
   return { rating: Math.round(rating * 10) / 10, count };
 }
 
+/** True when `authorId` refers to the current signed-in user — either the
+ * mock-mode placeholder or (once a live backend is wired up) the real
+ * authenticated user id, so backend-sourced posts the user authored
+ * themselves still render as "you" instead of falling through to a
+ * mismatched/mock organizer. */
+export function isMe(authorId: string): boolean {
+  return authorId === ME_AUTHOR_ID || authorId === getCurrentViewerId();
+}
+
 export function getPostAuthor(post: HomeFeedPost): EventOrganizer {
-  if (post.authorId === ME_AUTHOR_ID) return getCurrentUserOrganizer();
+  if (isMe(post.authorId)) return getCurrentUserOrganizer();
   return ORGANIZER_BY_ID[post.authorId] ?? EVENT_ORGANIZERS[0];
 }
 
@@ -115,6 +134,64 @@ export function postedAgoHours(postedAgo: string): number {
   return match[2] === 'd' ? value * 24 : value;
 }
 
+/** "now" / "3h" / "2d" — the label format `postedAgoHours` above parses. */
+export function formatPostedAgo(hours: number): string {
+  if (hours < 1) return 'now';
+  if (hours < 24) return `${Math.floor(hours)}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+/**
+ * Precise hours-since-posted for backend-sourced posts (real `createdAtISO`),
+ * falling back to parsing the coarse `postedAgo` label for mock-mode posts
+ * that have no real timestamp. Recency scoring in feedAlgorithm.ts should
+ * always go through this rather than `postedAgoHours(post.postedAgo)`
+ * directly, so backend-fed feeds get exact recency instead of the label's
+ * hour/day rounding.
+ */
+export function hoursSincePosted(post: HomeFeedPost, now: Date = new Date()): number {
+  if (post.createdAtISO) {
+    const created = new Date(post.createdAtISO).getTime();
+    if (!Number.isNaN(created)) return Math.max(0, (now.getTime() - created) / 3_600_000);
+  }
+  return postedAgoHours(post.postedAgo);
+}
+
+/** Maps the backend's `PostDto` (see api/types.ts) onto the client's
+ * `HomeFeedPost` shape — the one place that translates the real, shared post
+ * model into what the existing feed UI/scoring already knows how to render. */
+export function mapPostDtoToHomeFeedPost(dto: PostDto): HomeFeedPost {
+  const createdHours = (Date.now() - new Date(dto.createdAt).getTime()) / 3_600_000;
+  return {
+    id: dto.id,
+    type: dto.type,
+    authorId: dto.authorId,
+    caption: dto.caption,
+    image: dto.image ?? undefined,
+    videoUrl: dto.videoUrl ?? undefined,
+    visibility: dto.visibility,
+    isReshared: dto.isReshared,
+    originalHostId: dto.originalHostId ?? undefined,
+    eventId: dto.eventId,
+    eventTitle: dto.eventTitle,
+    category: dto.category,
+    mainCategory: dto.mainCategory,
+    eventDateISO: dto.eventDateISO ?? '',
+    eventDateLabel: dto.eventDateLabel,
+    eventLocation: dto.eventLocation,
+    coordinates: dto.coordinates,
+    postedAgo: formatPostedAgo(Number.isNaN(createdHours) ? 48 : createdHours),
+    createdAtISO: dto.createdAt,
+    likes: dto.likes,
+    likedByMe: dto.likedByMe,
+    comments: dto.comments,
+    registrationType: dto.registrationType ?? undefined,
+    slotsTotal: dto.slotsTotal ?? undefined,
+    slotsFilled: dto.slotsFilled ?? undefined,
+    registrationDeadlineISO: dto.registrationDeadlineISO ?? undefined,
+  };
+}
+
 /** Organizers the user follows by default on first load. */
 export const DEFAULT_FOLLOWING = ['org-rahul', 'org-dj-kiran'];
 
@@ -131,7 +208,71 @@ export function fallbackImageFor(seed: string): string {
   return `https://picsum.photos/seed/${encodeURIComponent(seed)}/800/800`;
 }
 
-export const HOME_FEED_POSTS: HomeFeedPost[] = [
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Matches the "Sun, July 5 · 9:00 AM" shape the seeds are authored in. */
+function formatSeedDateLabel(date: Date): string {
+  const dateLabel = date.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'long',
+    day: 'numeric',
+  });
+  const timeLabel = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${dateLabel} · ${timeLabel}`;
+}
+
+/** Local-time ISO without a timezone suffix, the format the seeds use. */
+function toLocalISO(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+  );
+}
+
+/**
+ * Seeds are authored on fixed calendar dates, so the whole feed eventually
+ * reads as "Event ended". Shifting every seed by the same whole number of days
+ * preserves the demo's relative schedule (some events imminent, others weeks
+ * out) and the authored time of day, while keeping the earliest one ahead of
+ * now. Whole days only, so morning events stay morning events.
+ */
+function rollSeedDatesForward(posts: HomeFeedPost[], now: Date = new Date()): HomeFeedPost[] {
+  const times = posts
+    .map((post) => new Date(post.eventDateISO).getTime())
+    .filter((time) => !Number.isNaN(time));
+  if (times.length === 0) return posts;
+
+  // Land the soonest event a day out rather than exactly on `now`, so its card
+  // still has a live countdown instead of expiring the moment the app loads.
+  const shiftDays = Math.ceil((now.getTime() + DAY_MS - Math.min(...times)) / DAY_MS);
+  if (shiftDays <= 0) return posts;
+
+  const shift = (iso: string): string => {
+    const time = new Date(iso).getTime();
+    if (Number.isNaN(time)) return iso;
+    return toLocalISO(new Date(time + shiftDays * DAY_MS));
+  };
+
+  return posts.map((post) => {
+    const eventDateISO = shift(post.eventDateISO);
+    const rolled: HomeFeedPost = {
+      ...post,
+      eventDateISO,
+      eventDateLabel: formatSeedDateLabel(new Date(eventDateISO)),
+    };
+    if (post.registrationDeadlineISO) {
+      rolled.registrationDeadlineISO = shift(post.registrationDeadlineISO);
+    }
+    return rolled;
+  });
+}
+
+const SEED_HOME_FEED_POSTS: HomeFeedPost[] = [
   {
     id: 'post-cricket-poster',
     type: 'poster',
@@ -221,7 +362,7 @@ export const HOME_FEED_POSTS: HomeFeedPost[] = [
     comments: 74,
     registrationType: 'limited',
     slotsTotal: 80,
-    slotsFilled: 80,
+    slotsFilled: 62,
     registrationDeadlineISO: '2026-07-12T20:00:00',
   },
   {
@@ -246,7 +387,7 @@ export const HOME_FEED_POSTS: HomeFeedPost[] = [
     comments: 9,
     registrationType: 'limited',
     slotsTotal: 24,
-    slotsFilled: 24,
+    slotsFilled: 19,
     registrationDeadlineISO: '2026-07-08T17:00:00',
   },
   {
@@ -271,7 +412,7 @@ export const HOME_FEED_POSTS: HomeFeedPost[] = [
     comments: 7,
     registrationType: 'limited',
     slotsTotal: 12,
-    slotsFilled: 12,
+    slotsFilled: 9,
     registrationDeadlineISO: '2026-07-10T06:00:00',
   },
   {
@@ -685,3 +826,5 @@ export const HOME_FEED_POSTS: HomeFeedPost[] = [
     registrationDeadlineISO: '2026-07-08T17:00:00',
   },
 ];
+
+export const HOME_FEED_POSTS: HomeFeedPost[] = rollSeedDatesForward(SEED_HOME_FEED_POSTS);

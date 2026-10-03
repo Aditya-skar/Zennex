@@ -1,3 +1,4 @@
+# ARCHIVED — superseded by backend/app/main.py. Kept for reference only; not run.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

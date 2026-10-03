@@ -1,6 +1,7 @@
 import {
   appendExploreEvent,
   removeExploreEvent,
+  getCurrentViewerId,
   type ExploreEvent,
   type GameAccess,
 } from '../ExplorePage/exploreEvents';
@@ -14,6 +15,11 @@ import {
   getCurrentUserOrganizer,
 } from './homeFeed';
 import { ensureEventChat } from '../common/eventChats';
+import { isBackendEnabled } from '../../api/client';
+import { createEventRemote, deleteEventRemote } from '../../api/eventsApi';
+import { createPost, deletePost } from '../../api/postsApi';
+import type { EventDto, PostCreatePayload } from '../../api/types';
+import { mapPostDtoToHomeFeedPost } from './homeFeed';
 
 const USER_POSTS_KEY = 'zenex-user-posts-v1';
 export const USER_POSTS_CHANGED_EVENT = 'zenex-user-posts-changed';
@@ -66,6 +72,7 @@ export function addUserPost(post: HomeFeedPost): void {
 
 /** True for posts created by the current user via Create Event. */
 export function isUserCreatedPost(post: HomeFeedPost): boolean {
+  if (isBackendEnabled()) return post.authorId === getCurrentViewerId();
   return post.id.startsWith('user-') && post.authorId === ME_AUTHOR_ID;
 }
 
@@ -104,7 +111,7 @@ export function toggleJoin(postId: string): boolean {
 
 /* ---------- Date helpers ---------- */
 
-function formatEventDateTime(date: string, time: string) {
+export function formatEventDateTime(date: string, time: string) {
   const start = new Date(`${date}T${time}`);
   const valid = !Number.isNaN(start.getTime());
 
@@ -153,7 +160,8 @@ function buildExploreEvent(data: CreateEventPayload): ExploreEvent {
   };
 }
 
-function buildHomePost(data: CreateEventPayload): HomeFeedPost {
+function buildHomePost(data: CreateEventPayload, eventIdOverride?: string): HomeFeedPost {
+  const eventId = eventIdOverride ?? data.id;
   const { iso, combinedLabel } = formatEventDateTime(data.date, data.time);
   const media = data.media ?? null;
 
@@ -180,7 +188,7 @@ function buildHomePost(data: CreateEventPayload): HomeFeedPost {
     deadline && !Number.isNaN(deadline.getTime()) ? deadline.toISOString() : undefined;
 
   return {
-    id: `user-${data.id}`,
+    id: `user-${eventId}`,
     type,
     authorId: ME_AUTHOR_ID,
     caption,
@@ -188,7 +196,7 @@ function buildHomePost(data: CreateEventPayload): HomeFeedPost {
     videoUrl,
     visibility: data.gameAccess === 'public' ? 'public' : 'private',
     isReshared: false,
-    eventId: data.id,
+    eventId,
     eventTitle: data.title,
     category: data.category,
     mainCategory: data.mainCategory,
@@ -236,9 +244,119 @@ export function publishEvent(data: CreateEventPayload): {
   return { event, post };
 }
 
+function buildPostCreatePayload(data: CreateEventPayload, eventId: string): PostCreatePayload {
+  const media = data.media ?? null;
+  const caption =
+    data.description.trim() || `I'm hosting ${data.title} at ${data.venue}. Come join! 🎉`;
+  const isLimited = data.registrationType === 'limited';
+
+  return {
+    eventId,
+    type: media?.type === 'image' ? 'poster' : media?.type === 'video' ? 'video' : 'text',
+    caption,
+    image: media?.type === 'image' ? media.url : undefined,
+    videoUrl: media?.type === 'video' ? media.url : undefined,
+    visibility: data.gameAccess === 'public' ? 'public' : 'private',
+    registrationType: isLimited ? 'limited' : null,
+    slotsTotal: isLimited ? data.slotsTotal ?? null : null,
+    registrationDeadline: isLimited && data.registrationDeadline ? data.registrationDeadline : null,
+  };
+}
+
+/**
+ * Publish path used when a live backend created the map event (the event
+ * itself is already persisted server-side — see eventsApi.createEventRemote).
+ * Also creates the real, shared Post backing it (Phase 3) so it shows up for
+ * every viewer via GET /api/posts, not just this browser's localStorage. No
+ * local exploreEvents write either, since the Explore map re-fetches from the
+ * API as the source of truth in that mode. Uses the server's real event id,
+ * not the client-side placeholder from the Create Event form.
+ */
+export async function publishEventRemote(
+  data: CreateEventPayload,
+  remoteEvent: EventDto,
+): Promise<{ post: HomeFeedPost }> {
+  const remotePost = await createPost(buildPostCreatePayload(data, remoteEvent.id));
+  const post = mapPostDtoToHomeFeedPost(remotePost);
+
+  if (data.createGroupChat !== false) {
+    const me = getCurrentUserOrganizer();
+    ensureEventChat({
+      eventId: remoteEvent.id,
+      title: remoteEvent.title,
+      category: remoteEvent.category,
+      avatar: me.avatar,
+      hostName: me.name,
+      hostId: me.id,
+    });
+  }
+
+  return { post };
+}
+
+/** Where a freshly published event landed, so callers can focus the map on it. */
+export type PublishedEventRef = {
+  id: string;
+  mainCategory: HomeMainCategory;
+  coordinates: [number, number];
+};
+
+/**
+ * The one entry point for the Create Event modal, whichever screen opened it.
+ * Against a live backend the map event is persisted server-side and the Home
+ * post is built around the server's event id; otherwise both surfaces are
+ * written locally. Routing every caller through here keeps a map event from
+ * existing only in localStorage while the map itself reads from the API.
+ */
+export async function submitCreateEvent(data: CreateEventPayload): Promise<PublishedEventRef> {
+  if (!isBackendEnabled()) {
+    const { event } = publishEvent(data);
+    return { id: event.id, mainCategory: event.mainCategory, coordinates: event.coordinates };
+  }
+
+  const { dateLabel, timeLabel, iso: startsAt } = formatEventDateTime(data.date, data.time);
+  const inviteListIds =
+    data.gameAccess === 'invite' && data.inviteListIds?.length ? data.inviteListIds : undefined;
+  const invitedMemberIds = inviteListIds?.length
+    ? resolveMemberIdsFromLists(inviteListIds)
+    : undefined;
+
+  const remoteEvent = await createEventRemote({
+    title: data.title,
+    category: data.category,
+    mainCategory: data.mainCategory,
+    date: dateLabel,
+    time: timeLabel,
+    venue: data.venue,
+    location: data.location || data.venue,
+    description: data.description,
+    coordinates: data.coordinates,
+    attendees: data.attendees ?? 1,
+    image: data.image,
+    gameAccess: data.gameAccess,
+    inviteListIds,
+    invitedMemberIds,
+    startsAt,
+  });
+
+  await publishEventRemote(data, remoteEvent);
+  return {
+    id: remoteEvent.id,
+    mainCategory: remoteEvent.mainCategory,
+    coordinates: remoteEvent.coordinates,
+  };
+}
+
 /** Remove a user-created post and its linked map event. */
-export function deletePublishedPost(post: HomeFeedPost): boolean {
+export async function deletePublishedPost(post: HomeFeedPost): Promise<boolean> {
   if (!isUserCreatedPost(post)) return false;
+
+  if (isBackendEnabled()) {
+    await deletePost(post.id);
+    await deleteEventRemote(post.eventId).catch(() => {});
+    return true;
+  }
+
   deleteUserPost(post.id);
   removeExploreEvent(post.eventId);
   return true;

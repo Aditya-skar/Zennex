@@ -217,6 +217,25 @@ body {
   --explore-bottom-nav-stack-extra: 34px;
 }
 
+.explore-live-loading-pill {
+  position: absolute;
+  top: calc(var(--phone-status-offset, 0px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--explore-text, #fff);
+  background: var(--explore-glass-bg);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid var(--explore-border);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+
 /* TOP-LEFT FILTER BAR – anchored to map container (not viewport) */
 .explore-filter-bar {
   position: absolute;
@@ -740,6 +759,15 @@ body {
 
 .media-upload-btn:hover {
   border-color: var(--explore-text, #1d1d1f);
+}
+
+.media-upload-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.media-upload-spinner {
+  animation: spin 0.8s linear infinite;
 }
 
 .media-preview {

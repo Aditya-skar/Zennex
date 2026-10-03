@@ -5,11 +5,15 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
 import AuthLayout from './components/auth/AuthLayout';
 import MobileAppFrame from './components/MobileAppFrame/MobileAppFrame';
-import { AUTH_CHANGED_EVENT, isLoggedIn } from './api';
+import { AUTH_CHANGED_EVENT, isLoggedIn, restoreRealtimeAuthOnBoot } from './api';
 import './App.css';
 
 export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isLoggedIn());
+
+  useEffect(() => {
+    restoreRealtimeAuthOnBoot();
+  }, []);
 
   useEffect(() => {
     const sync = () => setIsAuthenticated(isLoggedIn());

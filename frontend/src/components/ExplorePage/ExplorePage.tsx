@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Search, Bell, MapPin, Calendar, Clock, Settings, Sun, Moon, X, ChevronDown, Plus, LocateFixed } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
@@ -48,21 +48,49 @@ import {
   getEventOrganizer,
   groupEventsByLocation,
   locationKeyFromCoordinates,
-  ME_AUTHOR_ID,
+  getCurrentViewerId,
+  isKnownOrganizerId,
+  cacheRemoteOrganizer,
   type ExploreEvent,
   openEventInGoogleMaps,
 } from './exploreEvents';
 import { canViewOnPrivateMap, canViewOnPublicMap } from './mapEventAccess';
 import {
-  publishEvent,
+  submitCreateEvent,
   isJoined as isEventJoined,
   toggleJoin as toggleEventJoin,
   type CreateEventPayload,
 } from '../HomeFeed/publishContent';
+import { trackCategoryInteraction } from '../HomeFeed/feedAlgorithm';
 import { useTheme } from '../../themeContext';
 import { getDabbedUpIds, DAB_UPS_CHANGED_EVENT } from '../profile/profileData';
 import { PEOPLE_LISTS_CHANGED_EVENT } from '../HomeFeed/audienceLists';
 import type { MapEventScope } from '../Navbar';
+import { isBackendEnabled } from '../../api/client';
+import { listEvents } from '../../api/eventsApi';
+import { fetchPublicUser } from '../../api/usersApi';
+import type { EventDto } from '../../api/types';
+
+function eventDtoToExploreEvent(dto: EventDto): ExploreEvent {
+  return {
+    id: dto.id,
+    title: dto.title,
+    category: dto.category,
+    mainCategory: dto.mainCategory,
+    date: dto.date,
+    time: dto.time,
+    venue: dto.venue,
+    location: dto.location,
+    description: dto.description,
+    coordinates: dto.coordinates,
+    attendees: dto.attendees,
+    image: dto.image,
+    organizerId: dto.organizerId,
+    gameAccess: dto.gameAccess,
+    inviteListIds: dto.inviteListIds,
+    invitedMemberIds: dto.invitedMemberIds,
+  };
+}
 
 const HYDERABAD_CENTER: [number, number] = [17.3969, 78.4692];
 
@@ -74,7 +102,11 @@ const OSM_ATTRIBUTION =
 
 type ExplorePageProps = {
   onViewOrganizerProfile?: (organizerId: string) => void;
-  focusTarget?: { eventId: string; coordinates: [number, number] } | null;
+  focusTarget?: {
+    eventId: string;
+    coordinates: [number, number];
+    mainCategory?: 'Sports' | 'Entertainment';
+  } | null;
   onFocusHandled?: () => void;
   mapEventScope?: MapEventScope;
 };
@@ -169,22 +201,32 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
   const { theme, toggleTheme } = useTheme();
   const { position: userPosition, heading: userHeading, status: userLocationStatus, requestLocation } =
     useUserLocation();
-  const hasCenteredOnUserRef = useRef(false);
+  // Explore is unmounted/remounted every time you leave/re-enter the tab (see
+  // Layout.tsx), so a fresh mount with a pending focusTarget must NOT let the
+  // "center on my first GPS fix" effect below win the race once geolocation
+  // resolves a moment later — that's what was silently snapping the map back
+  // to the user's location instead of the event someone tapped "View location" on.
+  const hasCenteredOnUserRef = useRef(Boolean(focusTarget));
   const pendingLocateRef = useRef(false);
   const [flyToUserTrigger, setFlyToUserTrigger] = useState(0);
 
-  // Load events
-  const [events, setEvents] = useState<ExploreEvent[]>(() => loadExploreEvents());
+  // Load events — from the live API once a backend is configured, otherwise
+  // from the local mock store (unchanged behavior when VITE_API_URL is unset).
+  const backendEnabled = isBackendEnabled();
+  const [events, setEvents] = useState<ExploreEvent[]>(() => (backendEnabled ? [] : loadExploreEvents()));
+  const [isLoadingLiveEvents, setIsLoadingLiveEvents] = useState(backendEnabled);
 
   useEffect(() => {
+    if (backendEnabled) return;
     setEvents((prev) => mergeSeedEvents(prev));
-  }, []);
+  }, [backendEnabled]);
 
   useEffect(() => {
+    if (backendEnabled) return undefined;
     const refresh = () => setEvents(loadExploreEvents());
     window.addEventListener(EXPLORE_EVENTS_CHANGED_EVENT, refresh);
     return () => window.removeEventListener(EXPLORE_EVENTS_CHANGED_EVENT, refresh);
-  }, []);
+  }, [backendEnabled]);
 
   useEffect(() => {
     const onInterests = () => setInterestsVersion((v) => v + 1);
@@ -244,6 +286,48 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
 
   // Autofocus ref for search
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Live backend event loading (skipped entirely in mock mode) ---
+  // Deliberately category-only — no lat/lng/radiusKm. There's no
+  // radius-picker UI, and events are seeded around fixed demo coordinates
+  // unrelated to the viewer's real GPS position, so auto-filtering by live
+  // distance from the device previously hid every event (new and
+  // pre-existing) whenever the viewer's real location was far from that
+  // cluster. The backend still supports radius filtering for when a real
+  // "nearby" control is added.
+  const fetchLiveEvents = useCallback(async (categoryOverride?: 'Sports' | 'Entertainment') => {
+    if (!backendEnabled) return;
+    setIsLoadingLiveEvents(true);
+    try {
+      const dtos = await listEvents({ mainCategory: categoryOverride ?? activeMainCategory });
+      const fetched = dtos.map(eventDtoToExploreEvent);
+      setEvents(fetched);
+
+      // Resolve display info for any host we don't already know about.
+      const unknownIds = [...new Set(fetched.map((e) => e.organizerId))].filter(
+        (id) => !isKnownOrganizerId(id),
+      );
+      if (unknownIds.length > 0) {
+        const profiles = await Promise.all(unknownIds.map((id) => fetchPublicUser(id)));
+        profiles.forEach((profile, i) => {
+          if (profile) cacheRemoteOrganizer(unknownIds[i], profile);
+        });
+        // New array reference so memoized filters/popups re-render with the
+        // now-cached organizer info (getEventOrganizer itself stays sync).
+        setEvents((prev) => [...prev]);
+      }
+    } catch {
+      toast.error('Could not load events from the server.');
+    } finally {
+      setIsLoadingLiveEvents(false);
+    }
+  }, [backendEnabled, activeMainCategory]);
+
+  // Refetch on mount and whenever the category tab changes.
+  useEffect(() => {
+    void fetchLiveEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backendEnabled, activeMainCategory]);
 
   useEffect(() => {
     if (!userPosition) return;
@@ -310,10 +394,12 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Sync state to localStorage
+  // Sync state to localStorage (mock mode only — live-mode events are owned
+  // by the backend and shouldn't be mirrored into the mock dataset).
   useEffect(() => {
+    if (backendEnabled) return;
     localStorage.setItem('zenex-explore-events-v4', JSON.stringify(events));
-  }, [events]);
+  }, [events, backendEnabled]);
 
   useEffect(() => {
     localStorage.setItem('zenex-recent-searches-v3', JSON.stringify(recentSearches));
@@ -330,6 +416,14 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
     const target = events.find((e) => e.id === focusTarget.eventId);
     const coordinates = target?.coordinates ?? focusTarget.coordinates;
     const key = locationKeyFromCoordinates(coordinates);
+
+    // A pin only renders under its own category tab, and a sub-filter can hide
+    // it even then, so clear the way before selecting it.
+    const mainCategory = target?.mainCategory ?? focusTarget.mainCategory;
+    if (mainCategory) {
+      setActiveMainCategory(mainCategory);
+      setActiveSubFilter(null);
+    }
 
     setMapCenter(coordinates);
     setMapZoom(15);
@@ -423,19 +517,36 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
     toast('Open Discover to view organizer profiles', { icon: '👤' });
   };
 
-  const handleCreateEvent = (eventData: Record<string, unknown>) => {
-    // Publishes to BOTH the Explore map and the Home feed (as a post).
-    const { event } = publishEvent(eventData as unknown as CreateEventPayload);
-
-    setEvents(loadExploreEvents());
+  const focusOnCreatedEvent = (mainCategory: 'Sports' | 'Entertainment', coordinates: [number, number], id: string) => {
     // Switch the filter to match the new event so its pin is actually visible.
-    setActiveMainCategory(event.mainCategory === 'Entertainment' ? 'Entertainment' : 'Sports');
+    setActiveMainCategory(mainCategory === 'Entertainment' ? 'Entertainment' : 'Sports');
     setActiveSubFilter(null);
-    setMapCenter(event.coordinates);
+    setMapCenter(coordinates);
     setMapZoom(14);
-    setOpenLocationKey(locationKeyFromCoordinates(event.coordinates));
-    setSelectedEventId(event.id);
-    toast.success('Event created & posted to Home!');
+    setOpenLocationKey(locationKeyFromCoordinates(coordinates));
+    setSelectedEventId(id);
+  };
+
+  const handleCreateEvent = async (eventData: Record<string, unknown>) => {
+    const payload = eventData as unknown as CreateEventPayload;
+
+    try {
+      const created = await submitCreateEvent(payload);
+
+      if (backendEnabled) {
+        // Refetch with the NEW event's category explicitly — activeMainCategory
+        // (the currently viewed tab) may differ from it, and the state update
+        // from focusOnCreatedEvent below isn't visible in this closure yet.
+        await fetchLiveEvents(created.mainCategory);
+      } else {
+        setEvents(loadExploreEvents());
+      }
+
+      focusOnCreatedEvent(created.mainCategory, created.coordinates, created.id);
+      toast.success('Event created & posted to Home!');
+    } catch {
+      toast.error('Could not create the event. Please try again.');
+    }
   };
 
   const quickFilterCategories = [...SPORTS_CATEGORIES, ...ENTERTAINMENT_CATEGORIES];
@@ -502,6 +613,8 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
       const next = [filter, ...current.filter((item) => item !== filter)];
       return { ...prev, [activeMainCategory]: next };
     });
+
+    trackCategoryInteraction(filter, activeMainCategory, 'explore_subfilter');
   };
 
   const handleMainCategoryChange = (category: 'Sports' | 'Entertainment') => {
@@ -528,7 +641,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
 
       if (mapEventScope === 'public') {
         if (!canViewOnPublicMap(event)) return false;
-      } else if (!canViewOnPrivateMap(event, ME_AUTHOR_ID, dabbedOrganizerSet)) {
+      } else if (!canViewOnPrivateMap(event, getCurrentViewerId(), dabbedOrganizerSet)) {
         return false;
       }
 
@@ -592,6 +705,13 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
                 onSelect={() => {
                   setOpenLocationKey(group.key);
                   setSelectedEventId(group.events.length === 1 ? group.events[0].id : null);
+                  const primary = group.events[0];
+                  trackCategoryInteraction(
+                    primary.category,
+                    primary.mainCategory,
+                    'explore_pin_open',
+                    primary.organizerId,
+                  );
                 }}
               >
                 <Popup
@@ -765,6 +885,12 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
           <Settings size={18} />
         </button>
       </div>
+
+      {backendEnabled && isLoadingLiveEvents && (
+        <div className="explore-live-loading-pill" role="status">
+          Loading events…
+        </div>
+      )}
 
       {/* Create event (bottom-left), above nav island */}
       <div className="explore-map-bottom-left-stack">

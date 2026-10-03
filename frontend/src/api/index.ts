@@ -19,6 +19,7 @@ export {
   isLoggedIn,
   loginWithPassword,
   logout,
+  restoreRealtimeAuthOnBoot,
   signupAccount,
 } from './auth';
 

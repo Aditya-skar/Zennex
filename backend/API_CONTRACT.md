@@ -87,9 +87,66 @@ Response: `{ "ok": true }`
 
 ### `GET /api/dab-ups/:userId` → `{ "status": "none"|"pending"|"dabbed_up" }`
 
-### `GET /api/conversations` → `ConversationPreview[]`
+---
 
-### `GET /api/conversations/:id/messages` → message list (define when chat backend starts)
+## Users
+
+### `GET /api/users?q=&limit=` → `PublicUserProfile[]`
+
+Directory for starting a chat, excludes the caller. `q` matches username or full name (case-insensitive substring).
+
+### `GET /api/users/:id/public` → `PublicUserProfile`
+
+`PublicUserProfile`: `id`, `username`, `fullName`, `avatarUrl`, `bio`, `location`, `eventsHosted`.
+
+---
+
+## Chat (Chat Phase — DM + group only)
+
+Event group chats and communities are NOT part of this API; they stay client-side (`eventChats.ts` / `communitiesStore.ts`). New messages/prefs are also pushed live over Supabase Realtime (`postgres_changes` on `messages`/`conversation_members`/`message_reactions`) — see `backend/CHAT_SETUP.md`. This section only covers the REST surface.
+
+### `GET /api/conversations` → `ConversationDto[]`
+
+The caller's DMs + groups (excludes ones they've soft-deleted), pinned first then by last activity.
+
+### `POST /api/conversations`
+
+Body: `{ "type": "dm"|"group", "memberIds": string[], "name"?: string }` (`name` required for `group`; `memberIds` must have exactly one id for `dm`). Creating a `dm` that already exists between the same two users returns the existing conversation instead of a duplicate. Response: `ConversationDto`.
+
+### `GET /api/conversations/:id/messages?before=&limit=` → `MessageDto[]`
+
+Oldest-first. `before` (ISO datetime) paginates further back; `limit` defaults to 50, max 100. 404 if the caller isn't a member.
+
+### `POST /api/conversations/:id/messages`
+
+Body: `{ "kind": "text"|"image"|"video"|"post", "text"?, "mediaUrl"?, "sharedPostId"? }`. Response: `MessageDto`.
+
+### `POST /api/conversations/:id/members` `{ "userId" }` → `ConversationDto`
+
+Group admin only.
+
+### `DELETE /api/conversations/:id/members/:userId` → `{ "ok": true }`
+
+Group admin only; an admin can't remove themselves.
+
+### `PATCH /api/conversations/:id/read` → `{ "ok": true }`
+
+### `PATCH /api/conversations/:id/prefs`
+
+Body: any subset of `{ "pinned", "muted", "hidden" }` (booleans). Response: `{ "ok": true, "pinned", "muted", "hidden" }`.
+
+### `DELETE /api/conversations/:id` → `{ "ok": true }`
+
+Soft-delete: hides the conversation for the caller only, never for other members.
+
+### `POST /api/messages/:id/reactions` `{ "emoji" }` → `ChatReactionDto[]`
+
+Toggles: reacting with the same emoji you already used removes it; a different emoji replaces it (one reaction per user per message). Returns the message's full reaction list.
+
+`ConversationDto`: `id`, `type`, `name`, `avatarUrl`, `adminId?`, `members: ChatMemberDto[]`, `lastMessage?: MessageDto`, `unread`, `pinned`, `muted`, `createdAt`, `updatedAt`.
+`ChatMemberDto`: `id`, `name`, `avatarUrl`, `role` (`admin`|`member`).
+`MessageDto`: `id`, `conversationId`, `authorId`, `kind`, `text?`, `mediaUrl?`, `sharedPost?`, `reactions: ChatReactionDto[]`, `createdAt`.
+`ChatReactionDto`: `emoji`, `userId`, `userName`.
 
 ---
 

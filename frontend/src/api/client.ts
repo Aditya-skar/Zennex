@@ -103,6 +103,16 @@ export async function apiDelete<T>(url: string, config?: AxiosRequestConfig): Pr
   return data;
 }
 
+/** Multipart upload (avatars, post/event media) — see api/uploadApi.ts. */
+export async function apiUpload<T>(url: string, file: File | Blob, filename?: string): Promise<T> {
+  const form = new FormData();
+  form.append('file', file, filename ?? (file instanceof File ? file.name : 'upload'));
+  const { data } = await getApiClient().post<T>(url, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
 /** Feature flag: true once VITE_API_URL points at a live backend. */
 export function isBackendEnabled(): boolean {
   return Boolean((import.meta.env.VITE_API_URL as string | undefined)?.trim());

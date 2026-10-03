@@ -1,112 +1,53 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+import os
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="SIMSOR API", version="0.1.0")
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.config import get_settings
+from app.database import init_models
+from app.routers import affinity, auth, chat, events, follows, health, posts, profile, uploads, users
+from app.startup_checks import validate_settings
+
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    validate_settings(settings)
+    if settings.should_auto_create_tables:
+        # Dev convenience: auto-create tables on SQLite. Staging/production: run
+        # `alembic upgrade head` (see DEPLOY_PHASE1.md) — no create_all here.
+        await init_models()
+    yield
+
+
+app = FastAPI(title="SIMSOR API", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten when you have real web origins
+    allow_origins=settings.cors_origin_list,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)(:\d+)?|capacitor://localhost|ionic://localhost",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(profile.router)
+app.include_router(events.router)
+app.include_router(users.router)
+app.include_router(posts.router)
+app.include_router(follows.router)
+app.include_router(affinity.router)
+app.include_router(uploads.router)
+app.include_router(chat.router)
+app.include_router(chat.messages_router)
 
-class UserProfile(BaseModel):
-    id: str
-    username: str
-    fullName: str
-    bio: str = ""
-    location: str = ""
-    avatarUrl: str = ""
-    sports: list[str] = Field(default_factory=list)
-    entertainment: list[str] = Field(default_factory=list)
-
-
-class AuthSession(BaseModel):
-    token: str
-    user: UserProfile
-
-
-class LoginBody(BaseModel):
-    username: str
-    password: str
-
-
-class SignupBody(BaseModel):
-    username: str
-    password: str
-    fullName: str
-    email: str | None = None
-
-
-# In-memory stub store — replace with DB when you build for real
-_USERS: dict[str, dict] = {}
-
-
-def _demo_user(username: str, full_name: str) -> UserProfile:
-    return UserProfile(
-        id=f"usr_{username}",
-        username=username,
-        fullName=full_name,
-        bio="Sports Enthusiast • Event Explorer",
-        location="Hyderabad, India",
-        avatarUrl="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&h=300&q=80",
-        sports=["Cricket", "Football"],
-        entertainment=["Music", "Food Events"],
-    )
-
-
-@app.get("/api/health")
-def health():
-    return {"ok": True}
-
-
-@app.post("/api/auth/login", response_model=AuthSession)
-def login(body: LoginBody):
-    if len(body.username) < 3 or len(body.password) < 3:
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-    user = _demo_user(body.username.lower(), body.username if body.username != "admin" else "Admin User")
-    _USERS[user.id] = user.model_dump()
-    return AuthSession(token=f"dev-token-{user.id}", user=user)
-
-
-@app.post("/api/auth/signup", response_model=AuthSession)
-def signup(body: SignupBody):
-    user = _demo_user(body.username.lower(), body.fullName)
-    _USERS[user.id] = user.model_dump()
-    return AuthSession(token=f"dev-token-{user.id}", user=user)
-
-
-@app.post("/api/auth/logout")
-def logout():
-    return {"ok": True}
-
-
-@app.get("/api/me", response_model=UserProfile)
-def me():
-    # TODO: read Bearer token and load user from DB
-    if not _USERS:
-        return _demo_user("admin", "Admin User")
-    return UserProfile(**next(iter(_USERS.values())))
-
-
-@app.patch("/api/me", response_model=UserProfile)
-def update_me(patch: dict):
-    current = me().model_dump()
-    current.update({k: v for k, v in patch.items() if v is not None})
-    _USERS[current["id"]] = current
-    return UserProfile(**current)
-
-
-@app.get("/api/events")
-def list_events():
-    # TODO: query DB / geo index
-    return []
-
-
-@app.post("/api/events")
-def create_event(payload: dict):
-    # TODO: persist
-    return {**payload, "id": "evt_todo", "attendees": payload.get("attendees", 0)}
+# Local-disk upload fallback (see app/storage.py) — a no-op once R2 is
+# configured, since save_upload() then returns R2 URLs instead of /uploads/...
+# paths and nothing ever gets written here.
+os.makedirs(settings.upload_dir, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")

@@ -1,3 +1,19 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.0.0
+pydantic[email]>=2.0.0     # EmailStr validation on signup
+pydantic-settings>=2.5.0
+
+# Database (Phase 1)
+sqlalchemy>=2.0.36
+alembic>=1.14.0
+aiosqlite>=0.20.0          # local dev DB (sqlite+aiosqlite:///./simsor.db)
+asyncpg>=0.30.0            # Neon / Supabase Postgres in staging & prod
+
+# Auth
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.1,<5.0.0
+python-multipart>=0.0.9    # file uploads (avatars, event images) — used in Phase 3
+
+# Media storage (Phase 3, Cloudflare R2 is S3-compatible — see app/storage.py)
+boto3>=1.35.0

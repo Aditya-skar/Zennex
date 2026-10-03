@@ -23,7 +23,10 @@ export async function listEvents(params?: {
 }
 
 export async function createEventRemote(
-  payload: Omit<EventDto, 'id' | 'attendees'> & { attendees?: number },
+  // organizerId is intentionally not accepted here: the backend always sets
+  // it from the authenticated user (see backend/app/routers/events.py) and
+  // ignores any client-supplied value, so it shouldn't be required to call this.
+  payload: Omit<EventDto, 'id' | 'attendees' | 'organizerId'> & { attendees?: number },
 ): Promise<EventDto> {
   if (isBackendEnabled()) {
     return apiPost<EventDto>(API_ROUTES.events, payload);

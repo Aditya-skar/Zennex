@@ -1,0 +1,12 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.db
+uploads
+.env
+.env.*
+!.env.production.example
+legacy
+*.md
+.git

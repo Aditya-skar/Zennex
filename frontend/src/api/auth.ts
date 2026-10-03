@@ -3,6 +3,7 @@
  */
 import { apiPost, getAuthToken, isBackendEnabled, setAuthToken } from './client';
 import { API_ROUTES, type AuthSession, type UserProfile } from './types';
+import { syncRealtimeAuth } from '../lib/supabaseClient';
 
 export const AUTH_FLAG_KEY = 'zenex-auth';
 export const AUTH_CHANGED_EVENT = 'simsor-auth-changed';
@@ -69,7 +70,17 @@ function persistLocalSession(user: Partial<UserProfile> & { username: string; fu
 
 function applyLiveSession(session: AuthSession) {
   setAuthToken(session.token);
+  syncRealtimeAuth(session.token);
   persistLocalSession(session.user);
+}
+
+/** Re-bridges an already-stored token into Supabase Realtime on app boot,
+ * so an open tab reload doesn't lose live chat delivery. No-op if there's no
+ * token or the backend/Supabase isn't configured. */
+export function restoreRealtimeAuthOnBoot(): void {
+  if (!isBackendEnabled()) return;
+  const token = getAuthToken();
+  if (token) syncRealtimeAuth(token);
 }
 
 export async function loginWithPassword(username: string, password: string): Promise<UserProfile> {
@@ -132,6 +143,7 @@ export async function logout(): Promise<void> {
     }
   }
   setAuthToken(null);
+  syncRealtimeAuth(null);
   localStorage.removeItem(AUTH_FLAG_KEY);
   emitAuthChanged();
 }

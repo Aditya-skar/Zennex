@@ -10,8 +10,10 @@ import {
   getPostAuthor,
 } from '../HomeFeed/homeFeed';
 import { loadUserPosts } from '../HomeFeed/publishContent';
+import { loadFeedPosts } from '../HomeFeed/feedSource';
 import {
   FEED_CHANGED_EVENT,
+  trackCategoryInteraction,
 } from '../HomeFeed/feedAlgorithm';
 import {
   DAB_UPS_CHANGED_EVENT,
@@ -70,12 +72,26 @@ export const DiscoverPage: React.FC<DiscoverPageProps> = ({
   const [previewPost, setPreviewPost] = useState<HomeFeedPost | null>(null);
   const [scrollFeedPostId, setScrollFeedPostId] = useState<string | null>(null);
 
+  const [rawPosts, setRawPosts] = useState<HomeFeedPost[]>(() => [
+    ...loadUserPosts(),
+    ...HOME_FEED_POSTS,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFeedPosts()
+      .then((posts) => {
+        if (!cancelled) setRawPosts(posts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [feedVersion]);
+
   const allPosts = useMemo(
-    () =>
-      [...loadUserPosts(), ...HOME_FEED_POSTS].filter((post) =>
-        isAllowedFeedCategory(post.category),
-      ),
-    [feedVersion],
+    () => rawPosts.filter((post) => isAllowedFeedCategory(post.category)),
+    [rawPosts],
   );
 
   const filteredPosts = useMemo(() => {
@@ -136,6 +152,11 @@ export const DiscoverPage: React.FC<DiscoverPageProps> = ({
   const bumpFollow = () => {
     setFollowTick((v) => v + 1);
     onFollowChange();
+  };
+
+  const handleTileOpen = (post: HomeFeedPost) => {
+    trackCategoryInteraction(post.category, post.mainCategory, 'discover_tile_open', post.authorId);
+    setScrollFeedPostId(post.id);
   };
 
   return (
@@ -220,7 +241,7 @@ export const DiscoverPage: React.FC<DiscoverPageProps> = ({
               <DiscoverGridTile
                 key={post.id}
                 post={post}
-                onClick={() => setScrollFeedPostId(post.id)}
+                onClick={() => handleTileOpen(post)}
                 onLongPress={() => setPreviewPost(post)}
               />
             ))}

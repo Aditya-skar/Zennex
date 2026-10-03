@@ -1,3 +1,6 @@
+import { isBackendEnabled } from '../../api/client';
+import type { PublicUserDto } from '../../api/types';
+
 export type EventOrganizer = {
   id: string;
   name: string;
@@ -109,8 +112,60 @@ export const ORGANIZER_BY_ID = Object.fromEntries(
   EVENT_ORGANIZERS.map((organizer) => [organizer.id, organizer])
 ) as Record<string, EventOrganizer>;
 
-/** Author/organizer id used for anything created by the current signed-in user. */
+/** Author/organizer id used for anything created by the current signed-in user
+ * while in mock mode. Home feed posts always use this id regardless of mode
+ * (there's no posts API yet). Map events sourced from the live backend use
+ * the real authenticated user id instead — see `getCurrentViewerId()`. */
 export const ME_AUTHOR_ID = 'org-me';
+
+/**
+ * The id to compare against `event.organizerId` when deciding "is this my
+ * event" for the Explore map (private-map scope, organizer lookup). In mock
+ * mode this is the placeholder `ME_AUTHOR_ID`; once a live backend is wired
+ * up, created events carry the real authenticated user's id instead, so we
+ * need to compare against that instead.
+ */
+export function getCurrentViewerId(): string {
+  if (isBackendEnabled()) {
+    const realId = localStorage.getItem('simsor-user-id');
+    if (realId) return realId;
+  }
+  return ME_AUTHOR_ID;
+}
+
+/**
+ * Cache of organizer profiles fetched from the live backend (`GET
+ * /api/users/:id/public`), keyed by user id. Populated by the Explore page
+ * after loading events, since `getEventOrganizer` below must stay
+ * synchronous (it's called deep in render, e.g. from map popups).
+ */
+const REMOTE_ORGANIZER_CACHE = new Map<string, EventOrganizer>();
+
+export function cacheRemoteOrganizer(userId: string, profile: PublicUserDto): void {
+  REMOTE_ORGANIZER_CACHE.set(userId, {
+    id: profile.id,
+    name: profile.fullName || profile.username,
+    username: profile.username,
+    avatar: profile.avatarUrl || DEFAULT_ME_ACCOUNT.avatar,
+    role: 'Host',
+    bio: profile.bio,
+    location: profile.location,
+    eventsHosted: profile.eventsHosted,
+  });
+}
+
+export function getCachedRemoteOrganizer(userId: string): EventOrganizer | undefined {
+  return REMOTE_ORGANIZER_CACHE.get(userId);
+}
+
+export function isKnownOrganizerId(organizerId: string): boolean {
+  return (
+    organizerId === ME_AUTHOR_ID ||
+    organizerId === getCurrentViewerId() ||
+    organizerId in ORGANIZER_BY_ID ||
+    REMOTE_ORGANIZER_CACHE.has(organizerId)
+  );
+}
 
 /** Default account applied to the current user until they edit their profile. */
 export const DEFAULT_ME_ACCOUNT = {
@@ -615,8 +670,16 @@ export function getEventOrganizer(event: Partial<ExploreEvent>): EventOrganizer 
     (event.id ? INITIAL_EVENT_BY_ID[event.id]?.organizerId : undefined) ??
     'org-rahul';
 
-  if (organizerId === ME_AUTHOR_ID) return getCurrentUserOrganizer();
-  return ORGANIZER_BY_ID[organizerId] ?? EVENT_ORGANIZERS[0];
+  // Recognize both the mock-mode placeholder id and the real backend id of
+  // the signed-in user as "me" — always display via getCurrentUserOrganizer()
+  // (id stays ME_AUTHOR_ID) so profile navigation / chat code elsewhere,
+  // which is all keyed on ME_AUTHOR_ID, keeps working unchanged.
+  if (organizerId === ME_AUTHOR_ID || organizerId === getCurrentViewerId()) {
+    return getCurrentUserOrganizer();
+  }
+  return (
+    ORGANIZER_BY_ID[organizerId] ?? REMOTE_ORGANIZER_CACHE.get(organizerId) ?? EVENT_ORGANIZERS[0]
+  );
 }
 
 export function openEventInGoogleMaps(event: ExploreEvent): void {

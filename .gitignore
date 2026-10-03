@@ -21,6 +21,13 @@ pip-log.txt
 .env.test.local
 .env.production.local
 
+# Local SQLite dev database (backend Phase 1)
+backend/*.db
+backend/*.db-journal
+
+# Local-disk upload fallback (backend Phase 3) — see app/storage.py
+backend/uploads/
+
 # OS files
 .DS_Store
 Thumbs.db

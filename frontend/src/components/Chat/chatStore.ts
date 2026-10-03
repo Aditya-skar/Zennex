@@ -3,6 +3,7 @@ import {
   ME_AUTHOR_ID,
   ORGANIZER_BY_ID,
   getCurrentUserOrganizer,
+  getCurrentViewerId,
   getDefaultCommunityAvatarForCreator,
   type EventOrganizer,
 } from '../ExplorePage/exploreEvents';
@@ -12,6 +13,27 @@ import {
   EVENT_CHATS_CHANGED_EVENT,
 } from '../common/eventChats';
 import type { HomeFeedPost } from '../HomeFeed/homeFeed';
+import { isBackendEnabled } from '../../api/client';
+import {
+  addGroupMemberRemote,
+  createConversationRemote,
+  deleteConversationRemote,
+  getMessagesRemote,
+  listConversationsRemote,
+  markConversationReadRemote,
+  removeGroupMemberRemote,
+  sendMessageRemote,
+  setConversationPrefsRemote,
+  toggleReactionRemote,
+} from '../../api/chatApi';
+import { listUsers } from '../../api/usersApi';
+import type { ConversationDto, MessageDto, PublicUserDto } from '../../api/types';
+import {
+  broadcastTyping as broadcastTypingRealtime,
+  subscribeToConversation as subscribeToConversationRealtime,
+  unsubscribeFromConversation as unsubscribeFromConversationRealtime,
+  type ChatPresenceState,
+} from '../../lib/chatRealtime';
 
 export const CHAT_STORE_CHANGED = 'zenex-chat-store-changed';
 export const REACTION_EMOJIS = ['❤️', '😂', '😮', '😢', '👏', '🔥'] as const;
@@ -108,6 +130,229 @@ function formatTime(createdAt: number): string {
   return new Date(createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
+/* ============================================================
+   Remote (backend) DM/group support — Chat Phase
+   ------------------------------------------------------------
+   Real conversations always get a `conv_...` id from the backend
+   (see backend/app/models.py::_new_conversation_id), which never collides
+   with the local `dm-*`/`group-*`/`community-chat-*`/`event-*` id schemes
+   below — so a single id prefix check is enough to route every exported
+   function to the right storage. Event chats and communities are untouched
+   and keep using localStorage regardless of backend mode.
+   ============================================================ */
+
+function isRemoteChatId(id: string): boolean {
+  return id.startsWith('conv_');
+}
+
+function notifyChatStoreChanged(): void {
+  window.dispatchEvent(new CustomEvent(CHAT_STORE_CHANGED));
+}
+
+// Stale-while-revalidate caches, same pattern as feedAlgorithm.ts's follow
+// graph / affinity — keeps every exported function below synchronous even
+// though the real data now comes from network calls.
+let remoteConversations: ConversationDto[] | null = null;
+let remoteConversationsRefreshInFlight: Promise<void> | null = null;
+const remoteMessagesById = new Map<string, MessageDto[]>();
+const remoteMessagesLoadedIds = new Set<string>();
+const remotePresenceById = new Map<string, ChatPresenceState>();
+
+function refreshRemoteConversations(): Promise<void> {
+  if (remoteConversationsRefreshInFlight) return remoteConversationsRefreshInFlight;
+  remoteConversationsRefreshInFlight = listConversationsRemote()
+    .then((list) => {
+      remoteConversations = list;
+      notifyChatStoreChanged();
+    })
+    .catch(() => {
+      remoteConversations = remoteConversations ?? [];
+    })
+    .finally(() => {
+      remoteConversationsRefreshInFlight = null;
+    });
+  return remoteConversationsRefreshInFlight;
+}
+
+function optimisticallyUpdateRemoteConversation(
+  chatId: string,
+  updater: (c: ConversationDto) => ConversationDto,
+): void {
+  if (!remoteConversations) return;
+  remoteConversations = remoteConversations.map((c) => (c.id === chatId ? updater(c) : c));
+  notifyChatStoreChanged();
+}
+
+function remoteMemberToChatMember(m: ConversationDto['members'][number]): ChatMember {
+  return { id: m.id, name: m.name, avatar: m.avatarUrl, role: m.role === 'admin' ? 'Admin' : 'Member' };
+}
+
+function remoteMessageToChatMessage(m: MessageDto, members: ChatMember[], myId: string): ChatMessage {
+  return {
+    id: m.id,
+    authorId: m.authorId,
+    authorName: members.find((mem) => mem.id === m.authorId)?.name ?? 'Member',
+    sender: m.authorId === myId ? 'me' : 'other',
+    kind: m.kind,
+    text: m.text ?? undefined,
+    mediaUrl: m.mediaUrl ?? undefined,
+    sharedPost: m.sharedPost
+      ? {
+          postId: m.sharedPost.postId,
+          caption: m.sharedPost.caption,
+          eventTitle: m.sharedPost.eventTitle,
+          image: m.sharedPost.image ?? undefined,
+          videoUrl: m.sharedPost.videoUrl ?? undefined,
+          authorName: m.sharedPost.authorName,
+          authorAvatar: m.sharedPost.authorAvatar,
+          postType: m.sharedPost.postType,
+        }
+      : undefined,
+    time: formatTime(new Date(m.createdAt).getTime()),
+    createdAt: new Date(m.createdAt).getTime(),
+    reactions: m.reactions.map((r) => ({ emoji: r.emoji, userId: r.userId, userName: r.userName })),
+  };
+}
+
+function remoteToChatConversation(dto: ConversationDto): ChatConversation {
+  const myId = getCurrentViewerId();
+  const members = dto.members.map(remoteMemberToChatMember);
+  const presence = remotePresenceById.get(dto.id);
+  // Full history is fetched lazily when the conversation is opened (see
+  // ensureRemoteMessagesLoaded) — until then, fall back to the one-message
+  // preview the list endpoint already gives us so the inbox row isn't empty.
+  const messages = remoteMessagesById.get(dto.id) ?? (dto.lastMessage ? [dto.lastMessage] : []);
+
+  return {
+    id: dto.id,
+    type: dto.type,
+    name: dto.name,
+    avatar: dto.avatarUrl,
+    subtitle: dto.type === 'group' ? `${dto.members.length} members` : '',
+    // Presence only reflects people who currently have THIS conversation's
+    // realtime channel open (see chatRealtime.ts) — a reasonable proxy for
+    // "online" without a separate app-wide presence system.
+    online: dto.type === 'dm' ? (presence?.onlineUserIds.length ?? 0) > 0 : undefined,
+    adminId: dto.adminId ?? undefined,
+    members,
+    createdAt: new Date(dto.createdAt).getTime(),
+    messages: messages.map((m) => remoteMessageToChatMessage(m, members, myId)),
+  };
+}
+
+function appendRemoteMessage(chatId: string, message: MessageDto): void {
+  const existing = remoteMessagesById.get(chatId) ?? [];
+  if (existing.some((m) => m.id === message.id)) return; // de-dupe our own send echoed back over realtime
+  remoteMessagesById.set(chatId, [...existing, message]);
+  remoteMessagesLoadedIds.add(chatId);
+  optimisticallyUpdateRemoteConversation(chatId, (c) => ({ ...c, lastMessage: message, updatedAt: message.createdAt }));
+}
+
+/** Fetches full message history for a remote conversation the first time
+ * it's opened. Safe to call repeatedly — no-ops once loaded (realtime/sends
+ * keep the cache fresh after that). Exported for ChatPage to call on open. */
+export function ensureRemoteMessagesLoaded(chatId: string): void {
+  if (!isRemoteChatId(chatId) || remoteMessagesLoadedIds.has(chatId)) return;
+  remoteMessagesLoadedIds.add(chatId);
+  getMessagesRemote(chatId)
+    .then((messages) => {
+      remoteMessagesById.set(chatId, messages);
+      notifyChatStoreChanged();
+    })
+    .catch(() => {
+      remoteMessagesLoadedIds.delete(chatId); // allow a retry on next open
+    });
+}
+
+function rawRealtimeRowToMessage(row: Record<string, unknown>): MessageDto | null {
+  const id = row.id as string | undefined;
+  const conversationId = row.conversation_id as string | undefined;
+  const authorId = row.author_id as string | undefined;
+  const kind = row.kind as MessageDto['kind'] | undefined;
+  const createdAt = row.created_at as string | undefined;
+  if (!id || !conversationId || !authorId || !kind || !createdAt) return null;
+  return {
+    id,
+    conversationId,
+    authorId,
+    kind,
+    text: (row.text as string | null | undefined) ?? null,
+    mediaUrl: (row.media_url as string | null | undefined) ?? null,
+    sharedPost: null,
+    reactions: [],
+    createdAt,
+  };
+}
+
+/** Opens the realtime channel for a conversation (new messages + presence +
+ * typing). Call when a conversation becomes the active thread; always pair
+ * with `closeRemoteConversationRealtime` on close/unmount. No-op for
+ * non-remote ids or when Supabase isn't configured. */
+export function openRemoteConversationRealtime(chatId: string): void {
+  if (!isRemoteChatId(chatId)) return;
+  const myId = getCurrentViewerId();
+  const myName = getCurrentUserOrganizer().name;
+
+  subscribeToConversationRealtime(chatId, myId, myName, {
+    onMessageInsert: (row) => {
+      const message = rawRealtimeRowToMessage(row);
+      if (!message) return;
+      if (message.kind === 'post') {
+        // Shared-post messages need a join we can't do client-side (event
+        // title, author, image) — just re-fetch this conversation's history
+        // rather than partially rendering it.
+        remoteMessagesLoadedIds.delete(chatId);
+        ensureRemoteMessagesLoaded(chatId);
+        return;
+      }
+      appendRemoteMessage(chatId, message);
+    },
+    onPresenceChange: (state) => {
+      remotePresenceById.set(chatId, state);
+      notifyChatStoreChanged();
+    },
+  });
+}
+
+export function closeRemoteConversationRealtime(chatId: string): void {
+  if (!isRemoteChatId(chatId)) return;
+  unsubscribeFromConversationRealtime(chatId);
+  remotePresenceById.delete(chatId);
+}
+
+/** Broadcasts a "typing" ping on an already-open remote conversation. No-op
+ * otherwise (local chats don't have a typing indicator). */
+export function notifyTyping(chatId: string): void {
+  if (!isRemoteChatId(chatId)) return;
+  broadcastTypingRealtime(chatId, getCurrentViewerId());
+}
+
+export function isSomeoneTyping(chatId: string): boolean {
+  return (remotePresenceById.get(chatId)?.typingUserIds.length ?? 0) > 0;
+}
+
+export function markConversationReadIfRemote(chatId: string): void {
+  if (!isRemoteChatId(chatId)) return;
+  optimisticallyUpdateRemoteConversation(chatId, (c) => ({ ...c, unread: 0 }));
+  void markConversationReadRemote(chatId).catch(() => {
+    /* best-effort — unread will just re-sync on next list refresh */
+  });
+}
+
+/** Starts (or reuses) a 1:1 DM with a real user. Returns null in mock mode —
+ * there's no real user directory to message there. */
+export async function createDirectMessage(userId: string): Promise<ChatConversation | null> {
+  if (!isBackendEnabled()) return null;
+  try {
+    const dto = await createConversationRemote({ type: 'dm', memberIds: [userId] });
+    remoteConversations = [dto, ...(remoteConversations ?? []).filter((c) => c.id !== dto.id)];
+    notifyChatStoreChanged();
+    return remoteToChatConversation(dto);
+  } catch {
+    return null;
+  }
+}
+
 function organizerToMember(org: EventOrganizer): ChatMember {
   return { id: org.id, name: org.name, avatar: org.avatar, role: org.role };
 }
@@ -172,6 +417,9 @@ export function getPinnedChatIds(): string[] {
 }
 
 export function isChatPinned(chatId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    return remoteConversations?.find((c) => c.id === chatId)?.pinned ?? false;
+  }
   return loadPins().includes(chatId);
 }
 
@@ -186,6 +434,14 @@ export function unpinChat(chatId: string): void {
 }
 
 export function toggleChatPin(chatId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    const next = !isChatPinned(chatId);
+    optimisticallyUpdateRemoteConversation(chatId, (c) => ({ ...c, pinned: next }));
+    void setConversationPrefsRemote(chatId, { pinned: next }).catch(() => {
+      optimisticallyUpdateRemoteConversation(chatId, (c) => ({ ...c, pinned: !next }));
+    });
+    return next;
+  }
   if (isChatPinned(chatId)) {
     unpinChat(chatId);
     return false;
@@ -210,6 +466,9 @@ function saveMutedChatIds(chatIds: string[]): void {
 }
 
 export function isChatMuted(chatId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    return remoteConversations?.find((c) => c.id === chatId)?.muted ?? false;
+  }
   return loadMutedChatIds().includes(chatId);
 }
 
@@ -224,6 +483,14 @@ export function unmuteChat(chatId: string): void {
 }
 
 export function toggleChatMute(chatId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    const next = !isChatMuted(chatId);
+    optimisticallyUpdateRemoteConversation(chatId, (c) => ({ ...c, muted: next }));
+    void setConversationPrefsRemote(chatId, { muted: next }).catch(() => {
+      optimisticallyUpdateRemoteConversation(chatId, (c) => ({ ...c, muted: !next }));
+    });
+    return next;
+  }
   if (isChatMuted(chatId)) {
     unmuteChat(chatId);
     return false;
@@ -248,6 +515,15 @@ function saveHiddenChatIds(chatIds: string[]): void {
 }
 
 export function deleteConversation(chatId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    remoteConversations = (remoteConversations ?? []).filter((c) => c.id !== chatId);
+    notifyChatStoreChanged();
+    void deleteConversationRemote(chatId).catch(() => {
+      void refreshRemoteConversations(); // undo the optimistic removal if the request actually failed
+    });
+    return true;
+  }
+
   unpinChat(chatId);
   unmuteChat(chatId);
 
@@ -268,13 +544,10 @@ export function deleteConversation(chatId: string): boolean {
 export function sortConversationsByPinAndActivity(
   conversations: ChatConversation[],
 ): ChatConversation[] {
-  const pins = loadPins();
   return [...conversations].sort((a, b) => {
-    const aPin = pins.indexOf(a.id);
-    const bPin = pins.indexOf(b.id);
-    const aRank = aPin === -1 ? Number.MAX_SAFE_INTEGER : aPin;
-    const bRank = bPin === -1 ? Number.MAX_SAFE_INTEGER : bPin;
-    if (aRank !== bRank) return aRank - bRank;
+    const aPinned = isChatPinned(a.id);
+    const bPinned = isChatPinned(b.id);
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
     const aTime = a.messages[a.messages.length - 1]?.createdAt ?? a.createdAt;
     const bTime = b.messages[b.messages.length - 1]?.createdAt ?? b.createdAt;
     return bTime - aTime;
@@ -493,16 +766,68 @@ function eventChatToConversation(
 }
 
 export function getAllConversations(): ChatConversation[] {
+  const backendEnabled = isBackendEnabled();
   const hidden = new Set(loadHiddenChatIds());
-  const stored = loadStore().map(hydrateConversation).filter((c) => !hidden.has(c.id));
+  const stored = loadStore()
+    .map(hydrateConversation)
+    .filter((c) => !hidden.has(c.id))
+    // Once a backend is live, real dm/group chats come from the API instead
+    // (below) — the local demo dm-*/group-* entries would otherwise show up
+    // as dead-end conversations with fake accounts. Communities stay local
+    // either way (out of scope this phase).
+    .filter((c) => !(backendEnabled && (c.type === 'dm' || c.type === 'group')));
   const events = getEventChats()
     .map(eventChatToConversation)
     .filter((c) => !hidden.has(c.id));
-  const all = [...events, ...stored];
+
+  let remote: ChatConversation[] = [];
+  if (backendEnabled) {
+    if (remoteConversations === null) {
+      void refreshRemoteConversations();
+    } else {
+      remote = remoteConversations.map(remoteToChatConversation);
+    }
+  }
+
+  const all = [...events, ...remote, ...stored];
   return sortConversationsByPinAndActivity(all);
 }
 
+let remoteContactsCache: PublicUserDto[] | null = null;
+let remoteContactsRefreshInFlight: Promise<void> | null = null;
+
+function refreshRemoteContacts(): Promise<void> {
+  if (remoteContactsRefreshInFlight) return remoteContactsRefreshInFlight;
+  remoteContactsRefreshInFlight = listUsers()
+    .then((users) => {
+      remoteContactsCache = users;
+      notifyChatStoreChanged();
+    })
+    .catch(() => {
+      remoteContactsCache = remoteContactsCache ?? [];
+    })
+    .finally(() => {
+      remoteContactsRefreshInFlight = null;
+    });
+  return remoteContactsRefreshInFlight;
+}
+
+/** Contacts for starting a DM / adding group members. Real user directory
+ * once a backend is live; the mock organizer roster in demo mode. */
 export function getAvailableContacts(): ChatMember[] {
+  if (isBackendEnabled()) {
+    if (remoteContactsCache === null) {
+      void refreshRemoteContacts();
+      return [];
+    }
+    return remoteContactsCache.map((u) => ({
+      id: u.id,
+      name: u.fullName || u.username,
+      avatar: u.avatarUrl,
+      role: 'Member',
+    }));
+  }
+
   const me = meMember();
   return [
     me,
@@ -545,6 +870,15 @@ export function sendTextMessage(chatId: string, text: string): void {
     return;
   }
 
+  if (isRemoteChatId(chatId)) {
+    void sendMessageRemote(chatId, { kind: 'text', text: trimmed })
+      .then((msg) => appendRemoteMessage(chatId, msg))
+      .catch(() => {
+        /* best-effort for v1 — a failed send just silently doesn't appear */
+      });
+    return;
+  }
+
   const me = getCurrentUserOrganizer();
   appendStoredMessage(chatId, {
     id: `${chatId}-${Date.now()}`,
@@ -561,6 +895,13 @@ export function sendSharedPost(chatId: string, post: HomeFeedPost): void {
   if (chatId.startsWith('event-')) {
     const eventId = chatId.replace('event-', '');
     appendEventChatMessage(eventId, `📎 Shared: ${post.eventTitle} — ${post.caption.slice(0, 80)}`);
+    return;
+  }
+
+  if (isRemoteChatId(chatId)) {
+    void sendMessageRemote(chatId, { kind: 'post', sharedPostId: post.id })
+      .then((msg) => appendRemoteMessage(chatId, msg))
+      .catch(() => {});
     return;
   }
 
@@ -592,6 +933,13 @@ export function sendVideoMessage(chatId: string, videoUrl: string, caption?: str
   if (chatId.startsWith('event-')) {
     const eventId = chatId.replace('event-', '');
     appendEventChatMessage(eventId, caption ? `🎬 ${caption}` : '🎬 Shared a video');
+    return;
+  }
+
+  if (isRemoteChatId(chatId)) {
+    void sendMessageRemote(chatId, { kind: 'video', mediaUrl: videoUrl, text: caption })
+      .then((msg) => appendRemoteMessage(chatId, msg))
+      .catch(() => {});
     return;
   }
 
@@ -632,6 +980,21 @@ export function toggleReaction(chatId: string, messageId: string, emoji: string)
     return;
   }
 
+  if (isRemoteChatId(chatId)) {
+    void toggleReactionRemote(messageId, emoji)
+      .then((reactions) => {
+        const messages = remoteMessagesById.get(chatId);
+        if (!messages) return;
+        remoteMessagesById.set(
+          chatId,
+          messages.map((m) => (m.id === messageId ? { ...m, reactions } : m)),
+        );
+        notifyChatStoreChanged();
+      })
+      .catch(() => {});
+    return;
+  }
+
   updateStoredConversation(chatId, (conv) => ({
     ...conv,
     messages: conv.messages.map((msg) => {
@@ -652,9 +1015,22 @@ export function toggleReaction(chatId: string, messageId: string, emoji: string)
   }));
 }
 
-export function createGroup(name: string, memberIds: string[]): ChatConversation | null {
+/** Creates a group chat. Async in both modes (backend mode obviously needs
+ * the network round-trip; kept consistent so callers don't need to branch). */
+export async function createGroup(name: string, memberIds: string[]): Promise<ChatConversation | null> {
   const trimmed = name.trim();
   if (!trimmed || memberIds.length === 0) return null;
+
+  if (isBackendEnabled()) {
+    try {
+      const dto = await createConversationRemote({ type: 'group', name: trimmed, memberIds });
+      remoteConversations = [dto, ...(remoteConversations ?? [])];
+      notifyChatStoreChanged();
+      return remoteToChatConversation(dto);
+    } catch {
+      return null;
+    }
+  }
 
   const me = getCurrentUserOrganizer();
   const allIds = [ME_AUTHOR_ID, ...memberIds.filter((id) => id !== ME_AUTHOR_ID)];
@@ -802,6 +1178,16 @@ export function ensureJoinedCommunityChat(input: {
 }
 
 export function addGroupMember(chatId: string, memberId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    void addGroupMemberRemote(chatId, memberId)
+      .then((dto) => {
+        remoteConversations = (remoteConversations ?? []).map((c) => (c.id === chatId ? dto : c));
+        notifyChatStoreChanged();
+      })
+      .catch(() => {});
+    return true;
+  }
+
   const conv = loadStore().find((c) => c.id === chatId);
   if (!conv || (conv.type !== 'group' && conv.type !== 'community') || conv.adminId !== ME_AUTHOR_ID) return false;
   if (conv.memberIds.includes(memberId)) return false;
@@ -830,6 +1216,13 @@ export function addGroupMember(chatId: string, memberId: string): boolean {
 }
 
 export function removeGroupMember(chatId: string, memberId: string): boolean {
+  if (isRemoteChatId(chatId)) {
+    void removeGroupMemberRemote(chatId, memberId)
+      .then(() => refreshRemoteConversations())
+      .catch(() => {});
+    return true;
+  }
+
   const conv = loadStore().find((c) => c.id === chatId);
   if (!conv || (conv.type !== 'group' && conv.type !== 'community') || conv.adminId !== ME_AUTHOR_ID) return false;
   if (memberId === ME_AUTHOR_ID) return false;
@@ -858,6 +1251,10 @@ export function removeGroupMember(chatId: string, memberId: string): boolean {
 }
 
 export function isGroupAdmin(chat: ChatConversation): boolean {
+  // Communities/local groups always run under the mock "me" identity
+  // (ME_AUTHOR_ID) even in backend mode — out of scope this phase. Only
+  // real remote groups compare against the actual signed-in user.
+  if (isRemoteChatId(chat.id)) return chat.adminId === getCurrentViewerId();
   return chat.adminId === ME_AUTHOR_ID;
 }
 

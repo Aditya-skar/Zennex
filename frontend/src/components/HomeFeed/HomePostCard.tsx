@@ -20,7 +20,7 @@ import {
   isEventPast,
   getHostRating,
   fallbackImageFor,
-  ME_AUTHOR_ID,
+  isMe,
 } from './homeFeed';
 import {
   type FeedReason,
@@ -31,6 +31,8 @@ import {
 } from './feedAlgorithm';
 import PostCountdown from './PostCountdown';
 import { isJoined as checkJoined, toggleJoin, deletePublishedPost, isUserCreatedPost } from './publishContent';
+import { isBackendEnabled } from '../../api/client';
+import { toggleLike as toggleLikeRemote } from '../../api/postsApi';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { getEventCategoryIconClassName, getEventCategoryIconSrc } from '../ExplorePage/eventMapIcons';
 import { ensureEventChat, removeEventChat, deleteEventTranscript } from '../common/eventChats';
@@ -71,7 +73,8 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(() => post.likedByMe ?? false);
+  const [likeCount, setLikeCount] = useState(post.likes);
   const [reposted, setReposted] = useState(false);
   const [following, setFollowing] = useState(() => checkFollowing(post.authorId));
   const [joined, setJoined] = useState(() => checkJoined(post.eventId));
@@ -93,13 +96,18 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
   const host = getPostHost(post);
   const past = isEventPast(post);
   const badge = reasonLabel(reason);
-  const isOwnPost = post.authorId === ME_AUTHOR_ID;
+  const isOwnPost = isMe(post.authorId);
   const canDelete = isUserCreatedPost(post);
   const { rating, count } = getHostRating(post);
 
   useEffect(() => {
     setCaptionExpanded(false);
   }, [post.id]);
+
+  useEffect(() => {
+    setLiked(post.likedByMe ?? false);
+    setLikeCount(post.likes);
+  }, [post.id, post.likedByMe, post.likes]);
 
   useEffect(() => {
     if (captionExpanded) {
@@ -192,22 +200,36 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
     }
   };
 
-  const handleDelete = () => {
-    if (deletePublishedPost(post)) {
+  const handleDelete = async () => {
+    setConfirmDeleteOpen(false);
+    closeMenu();
+    if (await deletePublishedPost(post)) {
       removeEventChat(post.eventId);
       deleteEventTranscript(post.eventId);
       onPostDeleted?.();
     }
-    setConfirmDeleteOpen(false);
-    closeMenu();
   };
 
   const handleLike = () => {
-    setLiked((v) => {
-      const next = !v;
-      if (next) recordInteraction(post, 'like');
-      return next;
-    });
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((count) => count + (next ? 1 : -1));
+
+    if (isBackendEnabled()) {
+      toggleLikeRemote(post.id)
+        .then((result) => {
+          setLiked(result.liked);
+          setLikeCount(result.likes);
+        })
+        .catch(() => {
+          // revert optimistic update on failure
+          setLiked(!next);
+          setLikeCount((count) => count - (next ? 1 : -1));
+        });
+      return;
+    }
+
+    if (next) recordInteraction(post, 'like');
   };
 
   const handleLocation = () => {
@@ -448,7 +470,7 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
           onClick={handleLike}
         >
           <Heart size={17} fill={liked ? 'currentColor' : 'none'} />
-          {post.likes + (liked ? 1 : 0)}
+          {likeCount}
         </button>
         <button type="button" className="home-post-action">
           <MessageCircle size={17} />
