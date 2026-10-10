@@ -58,7 +58,7 @@ import { canViewOnPrivateMap, canViewOnPublicMap } from './mapEventAccess';
 import {
   submitCreateEvent,
   isJoined as isEventJoined,
-  toggleJoin as toggleEventJoin,
+  toggleJoinAsync as toggleEventJoinAsync,
   type CreateEventPayload,
 } from '../HomeFeed/publishContent';
 import { trackCategoryInteraction } from '../HomeFeed/feedAlgorithm';
@@ -475,10 +475,11 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
   const handleJoinEvent = (event: ExploreEvent) => {
     // Already joined → leave directly; otherwise confirm before joining.
     if (isEventJoined(event.id)) {
-      toggleEventJoin(event.id);
-      removeEventChat(event.id);
-      setJoinVersion((v) => v + 1);
-      toast(`Left "${event.title}"`);
+      void toggleEventJoinAsync(event.id).then((joined) => {
+        if (!joined) removeEventChat(event.id);
+        setJoinVersion((v) => v + 1);
+        toast(`Left "${event.title}"`);
+      });
       return;
     }
     setJoinConfirmEvent(event);
@@ -486,19 +487,22 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({
 
   const confirmJoinEvent = () => {
     if (joinConfirmEvent) {
-      toggleEventJoin(joinConfirmEvent.id);
-      const organizer = getEventOrganizer(joinConfirmEvent);
-      ensureEventChat({
-        eventId: joinConfirmEvent.id,
-        title: joinConfirmEvent.title,
-        category: joinConfirmEvent.category,
-        avatar: organizer.avatar,
-        hostName: organizer.name,
-        hostId: organizer.id,
-      });
-      setJoinVersion((v) => v + 1);
-      toast.success(`You joined "${joinConfirmEvent.title}"! Added to the group chat 💬`, {
-        icon: '🎉',
+      const event = joinConfirmEvent;
+      void toggleEventJoinAsync(event.id).then((joined) => {
+        if (!joined) return;
+        const organizer = getEventOrganizer(event);
+        ensureEventChat({
+          eventId: event.id,
+          title: event.title,
+          category: event.category,
+          avatar: organizer.avatar,
+          hostName: organizer.name,
+          hostId: organizer.id,
+        });
+        setJoinVersion((v) => v + 1);
+        toast.success(`You joined "${event.title}"! Added to the group chat 💬`, {
+          icon: '🎉',
+        });
       });
     }
     setJoinConfirmEvent(null);

@@ -35,6 +35,7 @@ import { FEED_CHANGED_EVENT, isFollowing, toggleFollow } from '../HomeFeed/feedA
 import { USER_POSTS_CHANGED_EVENT } from '../HomeFeed/publishContent';
 import { saveProfile } from '../../api';
 import { isBackendEnabled } from '../../api/client';
+import { getCurrentViewerId } from '../ExplorePage/exploreEvents';
 import { uploadFile } from '../../api/uploadApi';
 import {
   DAB_UPS_CHANGED_EVENT,
@@ -57,6 +58,14 @@ import {
   isOwnProfileUser,
   sendDabUpRequest,
 } from './profileData';
+import { fetchDabUpStatus, requestDabUp } from '../../api/socialApi';
+import { blockUser, deleteMyAccount, reportContent } from '../../api/trustApi';
+import {
+  canCreateCommunityRemote,
+  createCommunityRemote,
+  fetchCommunitiesByCreator,
+  joinCommunityRemote,
+} from '../../api/communitiesApi';
 import { RANK_TIERS } from './rankConfig';
 import { RankBadge } from './RankBadge';
 import {
@@ -202,21 +211,48 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const displayRole = isOwnProfile ? null : member.role;
 
   const [dabTick, setDabTick] = useState(0);
+  const [remoteDabStatus, setRemoteDabStatus] = useState<'none' | 'pending' | 'dabbed_up'>('none');
   useEffect(() => {
     const onDab = () => setDabTick((v) => v + 1);
     window.addEventListener(DAB_UPS_CHANGED_EVENT, onDab);
     return () => window.removeEventListener(DAB_UPS_CHANGED_EVENT, onDab);
   }, []);
 
+  useEffect(() => {
+    if (isOwnProfile || !profileUserId || !isBackendEnabled()) return;
+    void fetchDabUpStatus(profileUserId).then(setRemoteDabStatus);
+  }, [isOwnProfile, profileUserId, dabTick]);
+
   const dabStatus = React.useMemo(() => {
     if (isOwnProfile || !profileUserId) return 'none';
+    if (isBackendEnabled()) return remoteDabStatus;
     return getDabUpStatus(profileUserId);
-  }, [isOwnProfile, profileUserId, dabTick]);
+  }, [isOwnProfile, profileUserId, dabTick, remoteDabStatus]);
 
   const handleDabUp = () => {
     if (!profileUserId || dabStatus !== 'none') return;
+    if (isBackendEnabled()) {
+      void requestDabUp(profileUserId).then((status) => {
+        setRemoteDabStatus(status);
+        toast.success(
+          status === 'dabbed_up' ? `You're dabbed up with ${displayName}!` : `Dab Up sent to ${displayName}`,
+        );
+      });
+      return;
+    }
     sendDabUpRequest(profileUserId);
     toast.success(`Dab Up sent to ${displayName}`);
+  };
+
+  const handleDeleteAccount = () => {
+    if (!window.confirm('Delete your account permanently? This cannot be undone.')) return;
+    void deleteMyAccount()
+      .then(() => {
+        window.location.href = '/login';
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Could not delete account');
+      });
   };
 
   const boostTargetId = profileUserId ?? '';
@@ -312,31 +348,54 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [isEditModalOpen, isCreateCommunityOpen]);
 
-  useEffect(() => subscribeCommunities(() => {
+  useEffect(() => {
+    if (isBackendEnabled() && profileUserId) {
+      void fetchCommunitiesByCreator(isOwnProfile ? getCurrentViewerId() : profileUserId).then(
+        setCommunities,
+      );
+      return subscribeCommunities(() => {
+        void fetchCommunitiesByCreator(isOwnProfile ? getCurrentViewerId() : profileUserId!).then(
+          setCommunities,
+        );
+      });
+    }
     setCommunities(getVisibleCommunitiesForProfile(profileUserId, isOwnProfile));
-  }), [profileUserId, isOwnProfile]);
+    return subscribeCommunities(() => {
+      setCommunities(getVisibleCommunitiesForProfile(profileUserId, isOwnProfile));
+    });
+  }, [profileUserId, isOwnProfile]);
 
   const handleCreateCommunity = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canUserCreateCommunity()) {
+    const canCreate = isBackendEnabled() ? canCreateCommunityRemote() : canUserCreateCommunity();
+    if (!canCreate) {
       toast.error('You can only create one community for now');
       setIsCreateCommunityOpen(false);
       return;
     }
-    const created = createCommunity({
-      name: communityName,
-      description: communityDescription,
-      avatar: communityAvatar,
-      memberIds: communityMemberIds,
-    });
-    if (!created) {
-      toast.error('Enter a community name');
-      return;
-    }
-    toast.success(`"${created.name}" created — chat is ready`);
-    setIsCreateCommunityOpen(false);
-    resetCreateCommunityForm();
-    onOpenChat?.(created.chatId);
+    const run = async () => {
+      const created = isBackendEnabled()
+        ? await createCommunityRemote({
+            name: communityName,
+            avatarUrl: communityAvatar,
+            memberIds: communityMemberIds,
+          })
+        : createCommunity({
+            name: communityName,
+            description: communityDescription,
+            avatar: communityAvatar,
+            memberIds: communityMemberIds,
+          });
+      if (!created) {
+        toast.error('Enter a community name');
+        return;
+      }
+      toast.success(`"${created.name}" created — chat is ready`);
+      setIsCreateCommunityOpen(false);
+      resetCreateCommunityForm();
+      onOpenChat?.(created.chatId);
+    };
+    void run();
   };
 
   const openCommunityChat = (chatId: string) => {
@@ -345,9 +404,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   const handleCommunityClick = (community: Community) => {
     if (!isOwnProfile) {
-      joinCommunity(community.id);
+      if (isBackendEnabled()) void joinCommunityRemote(community.id);
+      else joinCommunity(community.id);
     }
     openCommunityChat(community.chatId);
+  };
+
+  const handleReportProfile = () => {
+    if (!profileUserId || isOwnProfile) return;
+    void reportContent({ targetType: 'user', targetId: profileUserId, reason: 'other' }).then(() =>
+      toast.success('Report submitted'),
+    );
+  };
+
+  const handleBlockProfile = () => {
+    if (!profileUserId || isOwnProfile) return;
+    if (!window.confirm('Block this user?')) return;
+    void blockUser(profileUserId).then(() => toast.success('User blocked'));
   };
 
   // Hero avatar ↔ badge swap + long-press zoom
@@ -906,14 +979,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="profile-page">
+    <div
+      className="profile-page"
+      style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
+    >
       <canvas ref={cropCanvasRef} style={{ display: 'none' }} />
 
       {/* Top half of the phone — identity hero */}
-      <div
-        className="profile-top-half"
-        style={{ '--rank-color': rank.tier.color, '--rank-tint': rank.tier.tint } as React.CSSProperties}
-      >
+      <div className="profile-top-half">
         <div className="profile-top-bar">
           <div className="profile-top-bar-start">
             {isOwnProfile ? (
@@ -1032,6 +1105,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 >
                   {isStartingChat ? 'Opening…' : 'Message'}
                 </button>
+              )}
+              {isBackendEnabled() && (
+                <>
+                  <button type="button" className="profile-action-btn profile-action-btn--muted" onClick={handleReportProfile}>
+                    Report
+                  </button>
+                  <button type="button" className="profile-action-btn profile-action-btn--muted" onClick={handleBlockProfile}>
+                    Block
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -1937,6 +2020,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
 
                 <div className="ios-settings-divider" />
+
+                {isBackendEnabled() && (
+                  <button type="button" className="ios-settings-logout-btn danger" onClick={handleDeleteAccount}>
+                    <Trash2 size={16} className="logout-icon" />
+                    <span>Delete Account</span>
+                  </button>
+                )}
 
                 <button type="button" className="ios-settings-logout-btn" onClick={handleLogout}>
                   <LogOut size={16} className="logout-icon" />

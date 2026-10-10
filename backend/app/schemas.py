@@ -30,6 +30,9 @@ class UserProfile(BaseModel):
     avatarUrl: str = ""
     sports: list[str] = Field(default_factory=list)
     entertainment: list[str] = Field(default_factory=list)
+    # Own-account only (never on PublicUserProfile).
+    email: str | None = None
+    emailVerified: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -332,3 +335,198 @@ class ReactionBody(BaseModel):
 
 class GroupMemberAdd(BaseModel):
     userId: str
+
+
+class OkResponse(BaseModel):
+    ok: bool = True
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    ok: bool = True
+    # Only present in development when RESEND_API_KEY is unset — for local testing.
+    resetToken: str | None = None
+
+
+class ResetPasswordBody(BaseModel):
+    token: str
+    newPassword: str
+
+    @field_validator("newPassword")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("password must be at least 6 characters")
+        return v
+
+
+class ChangePasswordBody(BaseModel):
+    currentPassword: str
+    newPassword: str
+
+    @field_validator("newPassword")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("password must be at least 6 characters")
+        return v
+
+
+class PasswordChangedResponse(BaseModel):
+    ok: bool = True
+    # Fresh session token — every other device was signed out.
+    token: str
+
+
+class VerifyEmailBody(BaseModel):
+    token: str
+
+
+class VerificationResponse(BaseModel):
+    ok: bool = True
+    alreadyVerified: bool = False
+    # Only present in development when RESEND_API_KEY is unset — for local testing.
+    verificationToken: str | None = None
+
+
+ReportTargetType = Literal["user", "post", "message", "event"]
+ReportStatus = Literal["open", "reviewing", "resolved", "dismissed"]
+ModerationAction = Literal["none", "remove_content", "suspend_user"]
+
+
+class ReportBody(BaseModel):
+    targetType: ReportTargetType
+    targetId: str = Field(min_length=1, max_length=64)
+    reason: str = Field(default="other", max_length=80)
+    details: str = Field(default="", max_length=2000)
+
+
+class AdminReportDto(BaseModel):
+    id: str
+    reporterId: str
+    reporterUsername: str | None = None
+    targetType: ReportTargetType
+    targetId: str
+    reason: str
+    details: str = ""
+    status: ReportStatus
+    resolutionNote: str = ""
+    resolvedBy: str | None = None
+    resolvedAt: datetime | None = None
+    createdAt: datetime
+
+
+class AdminReportUpdate(BaseModel):
+    status: ReportStatus = "resolved"
+    note: str = Field(default="", max_length=2000)
+    action: ModerationAction = "none"
+
+
+class AdminUserUpdate(BaseModel):
+    suspended: bool
+
+
+class AdminStatsDto(BaseModel):
+    users: int
+    suspendedUsers: int
+    openReports: int
+    reviewingReports: int
+    events: int
+    posts: int
+
+
+class ReportResponse(BaseModel):
+    id: str
+    ok: bool = True
+
+
+class BlockStatus(BaseModel):
+    blocked: bool
+
+
+DabUpStatusLiteral = Literal["none", "pending", "dabbed_up"]
+
+
+class DabUpRequestBody(BaseModel):
+    userId: str
+
+
+class DabUpStatusResponse(BaseModel):
+    status: DabUpStatusLiteral
+
+
+class PeopleListDto(BaseModel):
+    id: str
+    name: str
+    memberIds: list[str] = Field(default_factory=list)
+    updatedAt: int
+
+
+class PeopleListCreate(BaseModel):
+    name: str = "✨"
+    memberIds: list[str] = Field(default_factory=list)
+
+
+class PeopleListPatch(BaseModel):
+    name: str | None = None
+    memberIds: list[str] | None = None
+
+
+class JoinedEventsResponse(BaseModel):
+    eventIds: list[str]
+
+
+class JoinEventResponse(BaseModel):
+    joined: bool
+    attendees: int
+    slotsFilled: int | None = None
+    conversationId: str | None = None
+
+
+CommunityRole = Literal["admin", "member"]
+
+
+class DabbedUpIdsResponse(BaseModel):
+    userIds: list[str]
+
+
+class CommunityDto(BaseModel):
+    id: str
+    name: str
+    avatarUrl: str = ""
+    memberCount: int = 0
+    role: CommunityRole = "member"
+    creatorId: str
+    conversationId: str | None = None
+    createdAt: datetime | None = None
+
+
+class CommunityCreate(BaseModel):
+    name: str
+    avatarUrl: str = ""
+    memberIds: list[str] = Field(default_factory=list)
+
+
+class DeviceTokenBody(BaseModel):
+    platform: Literal["ios", "android", "web"]
+    token: str = Field(min_length=1, max_length=4096)
+
+
+class MeStatsDto(BaseModel):
+    dabUps: int
+    following: int
+    followers: int
+    eventsJoined: int
+    eventsHosted: int
+
+
+class GoogleAuthBody(BaseModel):
+    idToken: str
+
+
+class AppleAuthBody(BaseModel):
+    idToken: str
+    fullName: str | None = None

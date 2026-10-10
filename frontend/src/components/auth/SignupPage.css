@@ -1,65 +1,124 @@
-/* SignupPage.css - Premium Apple Design styles for Signup form */
+/* ====================================================
+   SignupPage.css – Fluid Full-Bleed Mobile Aesthetic
+   Crisp hairline borders and seamless edge blending
+   ==================================================== */
 
 .signup-body {
   width: 100%;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-/* Logo Container */
-.auth-logo-container {
+.signup-body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.auth-panel-head--signup {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.signup-back-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-bottom: 32px;
-  margin-top: 16px;
+  cursor: pointer;
+  transition: transform 0.16s ease, background 0.16s ease;
 }
 
-.auth-logo {
-  width: 80px;
-  height: 80px;
-  object-fit: contain;
-  animation: logoFadeIn 0.6s ease-out;
+[data-theme='light'] .signup-back-btn {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.04);
 }
 
-.auth-app-name {
-  font-size: 28px;
+.signup-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+[data-theme='light'] .signup-back-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.signup-back-btn:active {
+  transform: scale(0.95);
+}
+
+.auth-panel-title {
+  font-size: 21px;
   font-weight: 700;
-  color: var(--ios-text-primary);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin: 0 0 2px;
+  line-height: 1.2;
 }
 
-@keyframes logoFadeIn {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.auth-panel-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  margin: 0;
+  line-height: 1.4;
 }
 
 .signup-form {
-  gap: 14px;
-}
-
-/* Two-column Input Row */
-.ios-row-2col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
   width: 100%;
 }
 
+/* Two-column Input Row with Responsive Wrap for Narrow Mobile */
+.ios-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+@media (max-width: 360px) {
+  .ios-row-2col {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
+
+.ios-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.ios-input-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding-left: 2px;
+}
+
 .ios-input-field.padding-col {
-  padding-left: 36px;
+  padding-left: 38px;
 }
 
 /* Phone input container with integrated country code drop down */
 .ios-phone-input-container {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 
@@ -67,21 +126,34 @@
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--ios-input-bg);
-  border-radius: 12px;
-  height: 48px;
-  padding: 0 12px;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 15px;
+  height: 50px;
+  padding: 0 10px;
   min-width: 86px;
   overflow: hidden;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.ios-country-display {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+[data-theme='light'] .ios-country-selector {
+  background: rgba(0, 0, 0, 0.035);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .ios-country-selector:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-[data-theme="dark"] .ios-country-selector:hover {
-  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(233, 220, 190, 0.35);
 }
 
 .ios-country-selector select {
@@ -98,7 +170,7 @@
 .ios-selector-arrow {
   margin-left: 6px;
   font-size: 8px;
-  color: var(--ios-text-tertiary);
+  color: var(--text-tertiary);
   pointer-events: none;
 }
 
@@ -111,12 +183,18 @@
 .ios-interests-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: var(--ios-input-bg);
-  border-radius: 18px;
-  padding: 16px;
-  margin-top: 4px;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 14px;
+  margin-top: 2px;
   text-align: left;
+}
+
+[data-theme='light'] .ios-interests-section {
+  background: rgba(0, 0, 0, 0.025);
+  border: 1px solid rgba(0, 0, 0, 0.06);
 }
 
 .ios-interests-header-row {
@@ -126,35 +204,35 @@
 }
 
 .ios-interests-section-title {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--ios-text-primary);
+  color: var(--text-primary);
 }
 
 .ios-interests-section-subtitle {
   font-size: 10.5px;
-  color: var(--ios-text-tertiary);
+  color: var(--text-tertiary);
 }
 
 .ios-interest-category {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .ios-category-label {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  color: var(--ios-text-tertiary);
+  color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-/* Capsules selection capsule-chip */
+/* Capsule selection chips */
 .ios-chips-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
 .ios-capsule-chip {
@@ -162,66 +240,73 @@
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--ios-border);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 100px;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
-  color: var(--ios-text-secondary);
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme='light'] .ios-capsule-chip {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.07);
 }
 
 .ios-capsule-chip:hover {
-  border-color: var(--ios-primary);
-  color: var(--ios-primary);
+  border-color: rgba(233, 220, 190, 0.35);
+  color: var(--text-primary);
 }
 
 .ios-capsule-chip.selected {
-  background: rgba(0, 122, 255, 0.08);
-  border-color: var(--ios-primary);
-  color: var(--ios-primary);
+  background: rgba(233, 220, 190, 0.16);
+  border-color: rgba(233, 220, 190, 0.55);
+  color: #ffffff;
   font-weight: 600;
-  transform: scale(1.02);
-  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(233, 220, 190, 0.12);
 }
 
-[data-theme="dark"] .ios-capsule-chip.selected {
-  background: rgba(10, 132, 255, 0.15);
+[data-theme="light"] .ios-capsule-chip.selected {
+  background: #111113;
+  border-color: #111113;
+  color: #ffffff;
 }
 
 .ios-chip-checkmark {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ios-primary);
-  color: #FFFFFF;
+  background: var(--accent-primary);
+  color: #121214;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  flex-shrink: 0;
-  animation: bounceIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  font-size: 9px;
+  font-weight: 700;
 }
 
-/* iOS custom checkbox */
+/* Terms Checkbox */
 .ios-checkbox-label {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   cursor: pointer;
   user-select: none;
-  text-align: left;
   margin-top: 4px;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   padding: 0 2px;
+  text-align: left;
 }
 
 .ios-checkbox-wrapper {
   position: relative;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .ios-checkbox-hidden {
@@ -232,135 +317,101 @@
 }
 
 .ios-checkbox-custom {
-  width: 20px;
-  height: 20px;
-  border-radius: 6px;
-  border: 1.5px solid var(--ios-border);
-  background: var(--bg-primary);
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #FFFFFF;
-  transition: background-color 0.2s, border-color 0.2s;
+  color: #121214;
+  transition: background-color 0.18s, border-color 0.18s;
+}
+
+[data-theme='light'] .ios-checkbox-custom {
+  border: 1.5px solid rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .ios-checkbox-custom.checked {
-  background: var(--ios-primary);
-  border-color: var(--ios-primary);
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+[data-theme='light'] .ios-checkbox-custom.checked {
+  background: #111113;
+  border-color: #111113;
+  color: #ffffff;
 }
 
 .ios-checkbox-text {
-  font-size: 12.5px;
-  color: var(--ios-text-secondary);
+  font-size: 12px;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
 .ios-inline-link {
-  color: var(--ios-primary);
+  color: var(--accent-primary);
   font-weight: 500;
   text-decoration: underline;
 }
 
 .ios-inline-link:hover {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 /* Create Account large button */
 .ios-primary-btn.signup-btn {
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .ios-primary-btn.signup-btn:disabled {
-  background: var(--ios-border, #E5E5EA);
-  color: var(--ios-text-tertiary, #8E8E93);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-tertiary);
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
-  opacity: 0.7;
+  opacity: 0.5;
 }
 
-/* Header action containing the back button */
-.signup-header-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  width: 100%;
-}
-
-.signup-logo {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  color: var(--ios-text-primary);
-  text-transform: uppercase;
-}
-
-.signup-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ios-text-tertiary);
-  cursor: pointer;
-  padding: 6px 12px 6px 0;
-  border-radius: 8px;
-  transition: color 0.2s, transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-  outline: none;
-}
-
-.signup-back-btn:hover {
-  color: var(--ios-primary);
-  transform: translateX(-4px);
-}
-
-.signup-back-btn:active {
-  transform: translateX(-4px) scale(0.96);
+[data-theme='light'] .ios-primary-btn.signup-btn:disabled {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 /* Footer structure for Sign In link */
 .signup-footer {
-  margin-top: 24px;
+  margin-top: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 14px;
-  color: var(--ios-text-secondary);
-  border-top: 1.5px solid var(--ios-border);
-  padding-top: 20px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 16px;
   width: 100%;
+}
+
+[data-theme='light'] .signup-footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .signup-signin-link {
   background: transparent;
   border: none;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 700;
-  color: var(--ios-primary);
+  color: var(--accent-primary);
   cursor: pointer;
   padding: 0;
   position: relative;
-  transition: color 0.2s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: color 0.2s, transform 0.2s ease;
   outline: none;
 }
 
 .signup-signin-link:hover {
-  color: #0066D6; /* Premium dark blue on hover */
-  transform: scale(1.06);
+  color: var(--btn-hover);
   text-decoration: underline;
 }
-
-[data-theme="dark"] .signup-signin-link:hover {
-  color: #3399FF; /* Light blue hover on dark mode */
-}
-
-.signup-signin-link:active {
-  transform: scale(0.94);
-}
-

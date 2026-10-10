@@ -4,6 +4,8 @@ Uses `bcrypt` directly (not passlib) — passlib's bcrypt backend has known
 version-detection issues with bcrypt>=4.1, and the direct API is tiny enough
 not to need the wrapper.
 """
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -32,8 +34,20 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+@dataclass(frozen=True)
+class TokenClaims:
+    subject: str
+    jti: str | None
+    # Millisecond issue time (custom `iat_ms` claim). Standard `iat` is only
+    # second-granular, which can't order a login against a same-second
+    # "log out everywhere".
+    issued_ms: int | None
+    expires_at: datetime | None
+
+
 def create_access_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.jwt_expire_minutes)
     # `role`/`aud` are extra claims Supabase Realtime expects on any JWT it's
     # asked to trust (see backend/CHAT_SETUP.md — "bring your own auth"): once
     # JWT_SECRET is set to the project's own secret, Supabase verifies the
@@ -43,14 +57,16 @@ def create_access_token(subject: str) -> str:
     payload: dict[str, Any] = {
         "sub": subject,
         "exp": expire,
+        "jti": uuid.uuid4().hex,
+        "iat_ms": int(now.timestamp() * 1000),
         "role": "authenticated",
         "aud": "authenticated",
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def decode_access_token(token: str) -> str | None:
-    """Returns the user id (subject) if the token is valid, else None."""
+def decode_token_claims(token: str) -> TokenClaims | None:
+    """Verifies signature + expiry and returns the claims we care about."""
     try:
         # `options={"verify_aud": False}`: the `aud` claim on the token is
         # only there for Supabase Realtime's benefit (see create_access_token
@@ -61,5 +77,23 @@ def decode_access_token(token: str) -> str | None:
         )
     except JWTError:
         return None
+
     subject = payload.get("sub")
-    return subject if isinstance(subject, str) else None
+    if not isinstance(subject, str):
+        return None
+
+    jti = payload.get("jti")
+    issued = payload.get("iat_ms")
+    exp = payload.get("exp")
+    return TokenClaims(
+        subject=subject,
+        jti=jti if isinstance(jti, str) else None,
+        issued_ms=int(issued) if isinstance(issued, (int, float)) else None,
+        expires_at=datetime.fromtimestamp(exp, tz=timezone.utc) if isinstance(exp, (int, float)) else None,
+    )
+
+
+def decode_access_token(token: str) -> str | None:
+    """Returns the user id (subject) if the token is valid, else None."""
+    claims = decode_token_claims(token)
+    return claims.subject if claims else None

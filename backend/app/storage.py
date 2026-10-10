@@ -1,14 +1,17 @@
-"""File storage for uploaded post/event/avatar media (Phase 3).
+"""File storage for uploaded post/event/avatar media.
 
-Uses Cloudflare R2 (S3-compatible, via boto3) when `R2_*` env vars are
-configured (see app/config.py::Settings.r2_configured). Otherwise falls back
-to saving files on local disk under `upload_dir`, served by the StaticFiles
-mount in app/main.py — the same "sensible free default, swap via env var"
-pattern already used for `DATABASE_URL`. Callers don't need to know which
-backend is active; `save_upload` returns a public URL either way.
+Preference order:
+  1. Cloudflare R2 when all R2_* env vars are set
+  2. Supabase Storage when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set
+  3. Local disk under upload_dir (dev only; not durable across deploys)
+
+Callers always get a public URL back from `save_upload`.
 """
+import json
 import os
 import uuid
+import urllib.error
+import urllib.request
 from functools import lru_cache
 
 from app.config import get_settings
@@ -23,6 +26,10 @@ class UploadTooLarge(Exception):
 
 
 class UnsupportedMediaType(Exception):
+    pass
+
+
+class StorageUploadError(Exception):
     pass
 
 
@@ -61,9 +68,66 @@ def _save_to_r2(data: bytes, key: str, content_type: str) -> str:
     return f"{base}/{key}"
 
 
+def _save_to_supabase(data: bytes, key: str, content_type: str) -> str:
+    """Upload via Storage REST API using the service role key."""
+    bucket = settings.supabase_storage_bucket.strip() or "media"
+    base = settings.supabase_url_normalized
+    url = f"{base}/storage/v1/object/{bucket}/{key}"
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            "apikey": settings.supabase_service_role_key,
+            "Content-Type": content_type or "application/octet-stream",
+            "x-upsert": "true",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise StorageUploadError(f"Supabase Storage upload failed ({exc.code}): {body}") from exc
+    except urllib.error.URLError as exc:
+        raise StorageUploadError(f"Supabase Storage unreachable: {exc}") from exc
+
+    return f"{base}/storage/v1/object/public/{bucket}/{key}"
+
+
+def ensure_supabase_media_bucket() -> None:
+    """Create the public media bucket if it does not exist (idempotent)."""
+    if not settings.supabase_storage_configured:
+        raise StorageUploadError("Supabase Storage is not configured")
+
+    base = settings.supabase_url_normalized
+    bucket = settings.supabase_storage_bucket.strip() or "media"
+    payload = json.dumps({"name": bucket, "public": True}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base}/storage/v1/bucket",
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            "apikey": settings.supabase_service_role_key,
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        # Already exists is fine
+        if exc.code in {409, 400} and ("already" in body.lower() or "duplicate" in body.lower() or "exists" in body.lower()):
+            return
+        if exc.code == 409:
+            return
+        raise StorageUploadError(f"Could not create bucket '{bucket}' ({exc.code}): {body}") from exc
+
+
 def _save_to_local_disk(data: bytes, key: str) -> str:
-    # `key` includes a kind subfolder (e.g. "images/<uuid>.png"), so create the
-    # full parent path, not just `upload_dir` itself.
     path = os.path.join(settings.upload_dir, *key.split("/"))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
@@ -72,8 +136,7 @@ def _save_to_local_disk(data: bytes, key: str) -> str:
 
 
 def save_upload(data: bytes, filename: str, content_type: str) -> tuple[str, str]:
-    """Validates and stores an uploaded file. Returns (url, kind) where kind
-    is 'image' or 'video'. Raises UnsupportedMediaType / UploadTooLarge."""
+    """Validates and stores an uploaded file. Returns (url, kind)."""
     kind = _kind_for_content_type(content_type)
 
     max_mb = settings.max_image_upload_mb if kind == "image" else settings.max_video_upload_mb
@@ -84,6 +147,8 @@ def save_upload(data: bytes, filename: str, content_type: str) -> tuple[str, str
 
     if settings.r2_configured:
         url = _save_to_r2(data, key, content_type)
+    elif settings.supabase_storage_configured:
+        url = _save_to_supabase(data, key, content_type)
     else:
         url = _save_to_local_disk(data, key)
 

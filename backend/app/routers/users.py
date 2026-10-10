@@ -7,6 +7,7 @@ live API (see backend/PHASE2.md for context)."""
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 
+from app.blocks import blocked_ids_for
 from app.deps import CurrentUser, DbSession
 from app.models import Event, User
 from app.schemas import PublicUserProfile
@@ -24,7 +25,10 @@ async def list_users(
     """Directory for starting a new chat (Chat Phase) — excludes the caller.
     Not paginated beyond `limit`; fine at this scale (see backend/PHASE3.md's
     scaling notes), revisit if the user base grows past a few thousand."""
-    query = select(User).where(User.id != current_user.id)
+    query = select(User).where(User.id != current_user.id, User.is_suspended.is_(False))
+    hidden = await blocked_ids_for(db, current_user.id)
+    if hidden:
+        query = query.where(User.id.notin_(hidden))
     if q and q.strip():
         like = f"%{q.strip().lower()}%"
         query = query.where(or_(func.lower(User.username).like(like), func.lower(User.full_name).like(like)))

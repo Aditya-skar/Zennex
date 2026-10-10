@@ -15,8 +15,10 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.blocks import blocked_ids_for, is_blocked_between
 from app.deps import CurrentUser, DbSession
 from app.models import Conversation, ConversationMember, Message, MessageReaction, Post, Event, User
+from app.push import notify_users, preview
 from app.schemas import (
     ChatMemberDto,
     ChatReactionDto,
@@ -201,6 +203,9 @@ async def create_conversation(body: ConversationCreate, current_user: CurrentUse
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A DM must have exactly one other member")
         peer_id = other_ids[0]
 
+        if await is_blocked_between(db, current_user.id, peer_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can't message this user")
+
         existing_result = await db.execute(
             select(Conversation)
             .join(ConversationMember, ConversationMember.conversation_id == Conversation.id)
@@ -293,6 +298,19 @@ async def send_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     await _require_membership(db, conversation_id, current_user.id)
 
+    if conversation.type == "dm":
+        peer_ids = (
+            await db.execute(
+                select(ConversationMember.user_id).where(
+                    ConversationMember.conversation_id == conversation_id,
+                    ConversationMember.user_id != current_user.id,
+                )
+            )
+        ).scalars().all()
+        for peer_id in peer_ids:
+            if await is_blocked_between(db, current_user.id, peer_id):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can't message this user")
+
     if body.kind == "text" and not (body.text and body.text.strip()):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required for a text message")
     if body.kind in ("image", "video") and not body.mediaUrl:
@@ -317,7 +335,54 @@ async def send_message(
 
     await db.commit()
     await db.refresh(message)
+
+    await _push_new_message(db, conversation, message, current_user)
     return await _to_message_dto(db, message)
+
+
+async def _push_new_message(db: AsyncSession, conversation: Conversation, message: Message, sender: User) -> None:
+    """Notifies the other (un-muted, un-blocked) members. Never raises into the request."""
+    try:
+        member_ids = (
+            await db.execute(
+                select(ConversationMember.user_id).where(
+                    ConversationMember.conversation_id == conversation.id,
+                    ConversationMember.user_id != sender.id,
+                    ConversationMember.muted.is_(False),
+                )
+            )
+        ).scalars().all()
+        blocked = await blocked_ids_for(db, sender.id)
+        recipients = [uid for uid in member_ids if uid not in blocked]
+        if not recipients:
+            return
+
+        if message.kind == "image":
+            snippet = "📷 Photo"
+        elif message.kind == "video":
+            snippet = "🎬 Video"
+        elif message.kind == "post":
+            snippet = "Shared a post"
+        else:
+            snippet = preview(message.text)
+
+        sender_name = _display_name(sender)
+        if conversation.type == "dm":
+            title, body = sender_name, snippet
+        else:
+            title, body = conversation.name or "New message", f"{sender_name}: {snippet}"
+
+        await notify_users(
+            db,
+            recipients,
+            title=title,
+            body=body,
+            data={"type": "message", "conversationId": conversation.id, "messageId": message.id},
+        )
+    except Exception:  # noqa: BLE001 — a push problem must never fail a sent message
+        import logging
+
+        logging.getLogger("simsor.push").exception("push for new message failed")
 
 
 @router.patch("/{conversation_id}/read")

@@ -1,4 +1,4 @@
-﻿/* Profile page â€” B&W, blended with Home / Discover / Chat */
+/* Profile page â€” B&W, blended with Home / Discover / Chat */
 
 .profile-page {
   display: flex;
@@ -7,7 +7,29 @@
   width: 100%;
   max-width: 100%;
   padding-top: 0;
-  background: var(--home-bw-bg, #fff);
+  /* Rank tint washes down from the hero and fades out — no hard section edge */
+  background:
+    radial-gradient(
+      ellipse 110% 55% at 0% 12%,
+      color-mix(in srgb, var(--rank-color, #3b82f6) 26%, transparent) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 130% 60% at 30% 18%,
+      color-mix(in srgb, var(--rank-tint, transparent) 55%, transparent) 0%,
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 90% 45% at 85% 8%,
+      color-mix(in srgb, var(--rank-color, #3b82f6) 10%, transparent) 0%,
+      transparent 70%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--rank-color, #3b82f6) 8%, var(--home-bw-bg, #fff)) 0%,
+      var(--home-bw-bg, #fff) 65%
+    );
+  background-color: var(--home-bw-bg, #fff);
   color: var(--home-bw-fg, #111);
   text-align: left;
   min-height: calc(100dvh - 120px);
@@ -28,28 +50,7 @@
   overflow-y: auto;
   box-sizing: border-box;
   padding-bottom: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--home-bw-border, #ccc) 40%, transparent);
-  background:
-    radial-gradient(
-      ellipse 90% 240% at 4% 68%,
-      color-mix(in srgb, var(--rank-color, #3b82f6) 24%, transparent) 0%,
-      transparent 52%
-    ),
-    radial-gradient(
-      ellipse 120% 200% at 26% 58%,
-      color-mix(in srgb, var(--rank-tint, transparent) 62%, transparent) 0%,
-      transparent 64%
-    ),
-    radial-gradient(
-      ellipse 100% 180% at 52% 28%,
-      color-mix(in srgb, var(--rank-color, #3b82f6) 9%, transparent) 0%,
-      transparent 58%
-    ),
-    radial-gradient(
-      ellipse 80% 160% at 78% 38%,
-      color-mix(in srgb, var(--rank-color, #3b82f6) 5%, transparent) 0%,
-      transparent 55%
-    );
+  background: transparent;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -800,7 +801,6 @@ html.zenex-mobile-app .profile-page {
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   padding: 4px 0 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--home-bw-border, #ccc) 70%, transparent);
 }
 
 .profile-stat {

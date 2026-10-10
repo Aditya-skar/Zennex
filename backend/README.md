@@ -4,16 +4,30 @@ The mobile/web app talks to this API when `VITE_API_URL` is set in `frontend/.en
 
 Until then the app runs on **local mocks** — no backend required.
 
-**Phase 1 (real Postgres/SQLite-backed auth + profile) and the events part of
-Phase 2 are implemented and verified.** See [PHASE1.md](./PHASE1.md) and
-[PHASE2.md](./PHASE2.md) for full details on what was built, why, and what's
-next.
+**Phases 1–4 are implemented**: auth/profile/events/chat, media uploads, trust & safety
+(reports, blocks, password reset, account deletion), and the hardening pass — email
+verification, admin moderation, push notifications, Redis rate limiting, session
+revocation, geo prefilter, and an automated test suite. See [PHASE1.md](./PHASE1.md),
+[PHASE2.md](./PHASE2.md), [PHASE3.md](./PHASE3.md), [PHASE4.md](./PHASE4.md).
+
+## Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest
+```
+
+Tests run against a throwaway SQLite file and pin every external credential (email, FCM,
+Redis, Supabase) to empty, so they never touch real services or your `.env`.
 
 ## Deploy (Phase 1 — production foundation)
 
-Hosted Postgres + R2 + HTTPS API for store builds: **[DEPLOY_PHASE1.md](./DEPLOY_PHASE1.md)**.
+Postgres + durable media (Supabase Storage or R2) + HTTPS API: **[DEPLOY_PHASE1.md](./DEPLOY_PHASE1.md)**.
 
-Check readiness: `python scripts/check_deploy_ready.py --production`
+```powershell
+.\.venv\Scripts\python.exe scripts\check_deploy_ready.py --production
+.\.venv\Scripts\python.exe scripts\setup_supabase_storage.py
+```
 
 ## Quick start
 
@@ -56,3 +70,6 @@ See [API_CONTRACT.md](./API_CONTRACT.md) — keep backend responses aligned with
 | Profile | `frontend/src/api/profileApi.ts` | `/api/me` |
 | Events | `frontend/src/api/eventsApi.ts` | `/api/events` |
 | Dab ups / chat | `frontend/src/api/socialApi.ts` | `/api/dab-ups`, `/api/conversations` |
+| Reports / blocks | — | `/api/reports`, `/api/blocks` |
+| Moderation (admins) | — | `/api/admin/*` |
+| Push registration | — | `/api/me/device-token` |

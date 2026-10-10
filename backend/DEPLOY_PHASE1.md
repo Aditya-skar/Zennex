@@ -1,113 +1,88 @@
 # Deploy Phase 1 — Production foundation
 
-Status checklist for hosted HTTPS API + Postgres + R2. Code in this repo is ready;
-you fill in cloud accounts (free tiers are enough for beta).
+Status: **in progress**. Postgres + JWT + migrations are done for local/Supabase.
+Remaining: durable media + HTTPS host.
 
-## What Phase 1 delivers
+## Done when
 
-- Postgres (Supabase or Neon) instead of SQLite
-- Durable media on Cloudflare R2
-- API on HTTPS for Android/iOS store builds
-- Safe production startup (refuses dev secrets / SQLite / missing R2)
+- [x] Supabase Postgres + `alembic upgrade head`
+- [x] `JWT_SECRET` = Supabase legacy JWT secret
+- [x] Frontend `VITE_SUPABASE_*` for Realtime
+- [ ] Durable uploads (Supabase Storage **or** R2)
+- [ ] API on HTTPS (Render / Fly / Railway)
+- [ ] `VITE_API_URL` points at that HTTPS URL for phone builds
 
-## Step-by-step
+## Durable media — Option A (recommended): Supabase Storage
 
-### 1. Supabase Postgres (recommended: same project for Phase 2 chat Realtime)
+You already have a Supabase project — no Cloudflare account needed for beta.
 
-1. [supabase.com](https://supabase.com) → New project.
-2. **Settings → Database → Connection string → URI** (direct, not pooler).
-3. Convert to async driver and add to host secrets:
+1. Supabase → **Settings → API** → copy **Project URL** and **`service_role`** key  
+   (service_role is secret — backend only, never put in frontend `.env`).
+2. In `backend/.env`:
 
    ```env
-   DATABASE_URL=postgresql+asyncpg://postgres:YOUR_PASSWORD@db.xxxxx.supabase.co:5432/postgres
+   SUPABASE_URL=https://YOUR_REF.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=eyJ...service_role...
+   SUPABASE_STORAGE_BUCKET=media
    ```
 
-4. From your machine (with that URL in a temporary env or `.env`):
+3. Create the public bucket:
 
-   ```bash
-   cd backend
-   .venv\Scripts\activate
-   alembic upgrade head
+   ```powershell
+   cd C:\Users\Adi\OneDrive\Documents\app\backend
+   .\.venv\Scripts\python.exe scripts\setup_supabase_storage.py
    ```
 
-### 2. JWT secret
+4. Restart uvicorn. Upload an avatar/event photo — URL should start with  
+   `https://...supabase.co/storage/v1/object/public/media/...`
 
-```bash
-python scripts/generate_jwt_secret.py
+## Durable media — Option B: Cloudflare R2
+
+Set all five `R2_*` vars (see `.env.production.example`). Takes priority over Supabase Storage if both are set.
+
+## Deploy API on Render (HTTPS)
+
+1. Push this repo to GitHub (if not already).
+2. [Render](https://dashboard.render.com) → **New** → **Blueprint** → select repo  
+   (uses `backend/render.yaml`) **or** New Web Service → Docker → root `backend`.
+3. Set secret env vars from `.env.production.example`  
+   (`DATABASE_URL`, `JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ORIGINS`).
+4. Deploy → copy the `https://….onrender.com` URL.
+5. In `frontend/.env` for phone/store builds:
+
+   ```env
+   VITE_API_URL=https://YOUR-SERVICE.onrender.com
+   ```
+
+6. Rebuild: `npm.cmd run cap:sync` (or `release:sync`).
+
+Health check: `https://YOUR-SERVICE.onrender.com/api/health` → `{"ok":true}`
+
+## Production add-ons (recommended before real users)
+
+The API boots without these (startup logs a warning for each), but features degrade:
+
+| Env var | Without it |
+|---------|-----------|
+| `RESEND_API_KEY` (+ `EMAIL_FROM`, `PUBLIC_APP_URL`) | Password-reset and verification emails are **not delivered** |
+| `REDIS_URL` (Upstash/Redis) | Rate limits are per-process — **required** if you run >1 instance |
+| `ADMIN_USERNAMES` | No one can use `/api/admin/*` until a user has `is_admin` set |
+| `FCM_SERVICE_ACCOUNT_JSON` | No push notifications (see [PHASE4.md](./PHASE4.md)) |
+
+Check them all with `python scripts/check_deploy_ready.py --production`.
+
+## Local commands (Windows PowerShell)
+
+```powershell
+cd C:\Users\Adi\OneDrive\Documents\app\backend
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe scripts\setup_supabase_storage.py
+.\.venv\Scripts\python.exe scripts\check_deploy_ready.py --production
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-Set `JWT_SECRET` on the host. **Keep using this same value** when you wire Supabase Realtime in Phase 2 (or replace with Supabase’s JWT secret then — see `CHAT_SETUP.md`).
+## Next after Phase 1
 
-### 3. Cloudflare R2
-
-1. Cloudflare dashboard → R2 → Create bucket.
-2. Create API token with read/write on that bucket.
-3. Enable public access (r2.dev subdomain or custom domain).
-4. Set all five vars (see `.env.production.example`):
-
-   `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL_BASE`
-
-### 4. CORS
-
-```env
-ENVIRONMENT=production
-CORS_ORIGINS=https://your-marketing-site.com
-```
-
-Capacitor native origins are still allowed via regex in `app/main.py`.
-
-### 5. Deploy the API
-
-**Option A — Docker (any host)**
-
-```bash
-cd backend
-docker build -t simsor-api .
-docker run --env-file .env.production -p 8000:8000 simsor-api
-```
-
-**Option B — Render / Railway / Fly**
-
-- Root directory: `backend`
-- Build: Docker or `pip install -r requirements.txt`
-- Start: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- Attach env vars from `.env.production.example`
-
-Map a hostname with TLS, e.g. `https://api.yourdomain.com`.
-
-### 6. Point mobile builds at prod
-
-In `frontend/.env` **before** `npm run build:mobile` / `release:sync`:
-
-```env
-VITE_API_URL=https://api.yourdomain.com
-```
-
-Rebuild native projects. Never ship a dead trycloudflare URL in store builds.
-
-### 7. Verify
-
-```bash
-curl https://api.yourdomain.com/api/health
-python scripts/check_deploy_ready.py --production   # locally, with prod .env
-```
-
-Manual: signup → login → upload avatar → create event with photo → confirm image URL is `https://…r2.dev/…`.
-
-## Readiness script
-
-```bash
-cd backend
-python scripts/check_deploy_ready.py              # local dev
-python scripts/check_deploy_ready.py --production # same rules as ENVIRONMENT=production
-```
-
-## Phase 1 exit criteria
-
-- [ ] `ENVIRONMENT=production` API running on HTTPS
-- [ ] Postgres via `alembic upgrade head` (all 8 migrations)
-- [ ] R2 URLs on uploads
-- [ ] Strong `JWT_SECRET`, `CORS_ORIGINS` not `*`
-- [ ] `VITE_API_URL` in release mobile builds
-
-Next: **Phase 2** — Supabase Realtime keys on frontend + JWT bridge (`CHAT_SETUP.md`).
+Phases 2–4 (chat/Realtime, trust & safety, hardening) are built — see [PHASE4.md](./PHASE4.md)
+for the remaining provider setup (Resend, Firebase, Redis) and the first-admin bootstrap.
+Run `alembic upgrade head` on every deploy (current head: `0012`).

@@ -7,7 +7,24 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.database import init_models
-from app.routers import affinity, auth, chat, events, follows, health, posts, profile, uploads, users
+from app.rate_limit import RateLimitMiddleware
+from app.routers import (
+    admin,
+    affinity,
+    auth,
+    chat,
+    communities,
+    dab_ups,
+    events,
+    follows,
+    health,
+    moderation,
+    people_lists,
+    posts,
+    profile,
+    uploads,
+    users,
+)
 from app.startup_checks import validate_settings
 
 settings = get_settings()
@@ -23,8 +40,10 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="SIMSOR API", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="SIMSOR API", version="0.4.0", lifespan=lifespan)
 
+# Rate limit before CORS so abused IPs still get a proper JSON 429.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -45,6 +64,11 @@ app.include_router(affinity.router)
 app.include_router(uploads.router)
 app.include_router(chat.router)
 app.include_router(chat.messages_router)
+app.include_router(moderation.router)
+app.include_router(admin.router)
+app.include_router(dab_ups.router)
+app.include_router(people_lists.router)
+app.include_router(communities.router)
 
 # Local-disk upload fallback (see app/storage.py) — a no-op once R2 is
 # configured, since save_upload() then returns R2 URLs instead of /uploads/...

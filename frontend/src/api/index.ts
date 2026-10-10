@@ -26,3 +26,16 @@ export {
 export { fetchProfile, saveProfile } from './profileApi';
 export { createEventRemote, deleteEventRemote, listEvents } from './eventsApi';
 export { fetchDabUpStatus, listConversations, requestDabUp } from './socialApi';
+export { hydrateJoinedEvents, isEventJoined, toggleEventJoinRemote } from './joinsApi';
+export {
+  blockUser,
+  changePassword,
+  deleteMyAccount,
+  forgotPassword,
+  logoutEverywhere,
+  reportContent,
+  resetPassword,
+  sendEmailVerification,
+  unblockUser,
+  verifyEmail,
+} from './trustApi';

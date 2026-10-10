@@ -21,6 +21,8 @@ import {
   sendDabUpRequest,
 } from '../profile/profileData';
 import { toast } from 'react-hot-toast';
+import { isBackendEnabled } from '../../api/client';
+import { requestDabUp } from '../../api/socialApi';
 import { EVENT_ORGANIZERS, ME_AUTHOR_ID, ORGANIZER_BY_ID } from '../ExplorePage/exploreEvents';
 import { isAllowedFeedCategory } from '../ExplorePage/eventMapIcons';
 import './DiscoverPage.css';
@@ -122,18 +124,29 @@ export const DiscoverPage: React.FC<DiscoverPageProps> = ({
   const handleDabUp = (organizerId: string) => {
     if (getDabUpStatus(organizerId) !== 'none') return;
     const person = ORGANIZER_BY_ID[organizerId];
-    sendDabUpRequest(organizerId);
-    setFollowTick((v) => v + 1);
-    toast(`Dab Up request sent to ${person?.name ?? 'member'} 🤝`);
-
-    // One-shot listener to announce the mutual accept.
-    const onAccepted = () => {
-      if (getDabUpStatus(organizerId) === 'dabbed_up') {
-        toast.success(`You and ${person?.name ?? 'member'} are now Dabbed Up! ✅`);
-        window.removeEventListener(DAB_UPS_CHANGED_EVENT, onAccepted);
+    const run = async () => {
+      if (isBackendEnabled()) {
+        const status = await requestDabUp(organizerId);
+        setFollowTick((v) => v + 1);
+        if (status === 'dabbed_up') {
+          toast.success(`You and ${person?.name ?? 'member'} are now Dabbed Up! ✅`);
+        } else {
+          toast(`Dab Up request sent to ${person?.name ?? 'member'} 🤝`);
+        }
+        return;
       }
+      sendDabUpRequest(organizerId);
+      setFollowTick((v) => v + 1);
+      toast(`Dab Up request sent to ${person?.name ?? 'member'} 🤝`);
+      const onAccepted = () => {
+        if (getDabUpStatus(organizerId) === 'dabbed_up') {
+          toast.success(`You and ${person?.name ?? 'member'} are now Dabbed Up! ✅`);
+          window.removeEventListener(DAB_UPS_CHANGED_EVENT, onAccepted);
+        }
+      };
+      window.addEventListener(DAB_UPS_CHANGED_EVENT, onAccepted);
     };
-    window.addEventListener(DAB_UPS_CHANGED_EVENT, onAccepted);
+    void run();
     window.dispatchEvent(new CustomEvent(FEED_CHANGED_EVENT));
   };
 

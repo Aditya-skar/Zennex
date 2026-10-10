@@ -3,13 +3,16 @@
  * Mock implementations use existing local stores; live paths call REST.
  */
 import { apiGet, apiPost, isBackendEnabled } from './client';
+import { hydrateDabUps } from './dabUpsApi';
 import { API_ROUTES, type ConversationPreview, type DabUpStatus } from './types';
 import { getDabUpStatus, sendDabUpRequest } from '../components/profile/profileData';
 
 export async function requestDabUp(userId: string): Promise<DabUpStatus> {
   if (isBackendEnabled()) {
-    await apiPost(API_ROUTES.dabUpRequest, { userId });
-    return 'pending';
+    const res = await apiPost<{ status: DabUpStatus }>(API_ROUTES.dabUpRequest, { userId });
+    await hydrateDabUps();
+    window.dispatchEvent(new CustomEvent('zenex-dabups-changed'));
+    return res.status;
   }
   sendDabUpRequest(userId);
   return getDabUpStatus(userId);

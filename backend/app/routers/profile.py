@@ -1,9 +1,12 @@
-"""GET/PATCH /api/me — the authenticated user's own profile."""
-from fastapi import APIRouter
+"""GET/PATCH/DELETE /api/me — the authenticated user's own profile."""
+from fastapi import APIRouter, Query
+from sqlalchemy import delete, func, or_, select
 
+from app.account_cleanup import delete_user_account
 from app.deps import CurrentUser, DbSession
-from app.models import User
-from app.schemas import ProfilePatch, UserProfile
+from app.mappers import to_profile as _to_profile
+from app.models import DabUp, Event, EventAttendee, Follow, UserDeviceToken
+from app.schemas import DeviceTokenBody, MeStatsDto, OkResponse, ProfilePatch, UserProfile
 
 router = APIRouter(prefix="/api/me", tags=["profile"])
 
@@ -35,14 +38,86 @@ async def update_me(patch: ProfilePatch, current_user: CurrentUser, db: DbSessio
     return _to_profile(current_user)
 
 
-def _to_profile(user: User) -> UserProfile:
-    return UserProfile(
-        id=user.id,
-        username=user.username,
-        fullName=user.full_name,
-        bio=user.bio,
-        location=user.location,
-        avatarUrl=user.avatar_url,
-        sports=user.sports,
-        entertainment=user.entertainment,
+@router.get("/stats", response_model=MeStatsDto)
+async def my_stats(current_user: CurrentUser, db: DbSession) -> MeStatsDto:
+    uid = current_user.id
+    dab = (
+        await db.execute(
+            select(func.count())
+            .select_from(DabUp)
+            .where(DabUp.status == "dabbed_up")
+            .where(or_(DabUp.requester_id == uid, DabUp.target_id == uid))
+        )
+    ).scalar_one()
+    following = (
+        await db.execute(select(func.count()).select_from(Follow).where(Follow.follower_id == uid))
+    ).scalar_one()
+    followers = (
+        await db.execute(select(func.count()).select_from(Follow).where(Follow.followee_id == uid))
+    ).scalar_one()
+    joined = (
+        await db.execute(select(func.count()).select_from(EventAttendee).where(EventAttendee.user_id == uid))
+    ).scalar_one()
+    hosted = (
+        await db.execute(select(func.count()).select_from(Event).where(Event.organizer_id == uid))
+    ).scalar_one()
+    return MeStatsDto(
+        dabUps=int(dab),
+        following=int(following),
+        followers=int(followers),
+        eventsJoined=int(joined),
+        eventsHosted=int(hosted),
     )
+
+
+@router.post("/device-token", response_model=OkResponse)
+async def register_device_token(
+    body: DeviceTokenBody, current_user: CurrentUser, db: DbSession
+) -> OkResponse:
+    """Stores the device's push registration token (FCM). One token per user+platform.
+
+    A physical device token can only belong to one account at a time: if it was
+    previously registered to someone else (shared phone / re-login), that stale
+    registration is removed so pushes never leak to the previous user.
+    """
+    await db.execute(
+        delete(UserDeviceToken).where(
+            UserDeviceToken.token == body.token,
+            UserDeviceToken.user_id != current_user.id,
+        )
+    )
+    existing = await db.execute(
+        select(UserDeviceToken).where(
+            UserDeviceToken.user_id == current_user.id,
+            UserDeviceToken.platform == body.platform,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row is None:
+        db.add(UserDeviceToken(user_id=current_user.id, platform=body.platform, token=body.token))
+    else:
+        row.token = body.token
+    await db.commit()
+    return OkResponse(ok=True)
+
+
+@router.delete("/device-token", response_model=OkResponse)
+async def unregister_device_token(
+    current_user: CurrentUser,
+    db: DbSession,
+    platform: str | None = Query(default=None, description="ios | android | web — omit to remove all"),
+) -> OkResponse:
+    """Call on logout so a signed-out device stops receiving this user's pushes."""
+    stmt = delete(UserDeviceToken).where(UserDeviceToken.user_id == current_user.id)
+    if platform:
+        stmt = stmt.where(UserDeviceToken.platform == platform)
+    await db.execute(stmt)
+    await db.commit()
+    return OkResponse(ok=True)
+
+
+@router.delete("", response_model=OkResponse)
+async def delete_me(current_user: CurrentUser, db: DbSession) -> OkResponse:
+    """Hard-delete account + owned content (App Store requirement)."""
+    await delete_user_account(db, current_user)
+    return OkResponse(ok=True)

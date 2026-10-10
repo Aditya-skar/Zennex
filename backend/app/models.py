@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import expression
 
 from app.database import Base
 
@@ -51,6 +52,17 @@ class User(Base):
     # tables later if you need to query/filter by interest at the DB level.
     sports: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     entertainment: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+
+    # OAuth (Google / Apple) — password users leave these null.
+    auth_provider: Mapped[str | None] = mapped_column(String(20), nullable=True)  # google | apple
+    auth_subject: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+
+    # Email verification, moderation and session control (migration 0012).
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
+    is_suspended: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=expression.false())
+    # Any token issued before this instant is rejected ("log out everywhere").
+    tokens_valid_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -196,10 +208,11 @@ class Conversation(Base):
     __tablename__ = "conversations"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_conversation_id)
-    type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'dm' | 'group'
+    type: Mapped[str] = mapped_column(String(10), nullable=False)  # 'dm' | 'group' | 'event'
     name: Mapped[str] = mapped_column(String(120), nullable=False, default="")  # group name only; DMs compute display name client-side
     avatar_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    event_id: Mapped[str | None] = mapped_column(String(32), ForeignKey("events.id"), nullable=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -253,3 +266,157 @@ class MessageReaction(Base):
     user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), primary_key=True)
     emoji: Mapped[str] = mapped_column(String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+def _new_reset_id() -> str:
+    return f"pwr_{uuid.uuid4().hex[:16]}"
+
+
+def _new_report_id() -> str:
+    return f"rpt_{uuid.uuid4().hex[:12]}"
+
+
+class PasswordReset(Base):
+    """One-time password reset tokens (hashed at rest)."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_reset_id)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class UserBlock(Base):
+    """blocker_id has blocked blocked_id — hide DMs / profiles server-side."""
+
+    __tablename__ = "user_blocks"
+
+    blocker_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), primary_key=True)
+    blocked_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class UserReport(Base):
+    """Moderation report queue — Apple/Google expect a path to flag abuse."""
+
+    __tablename__ = "user_reports"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_report_id)
+    reporter_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True, nullable=False)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False)  # user | post | message | event
+    target_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    reason: Mapped[str] = mapped_column(String(80), nullable=False, default="other")
+    details: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Triage workflow (migration 0012): open → reviewing → resolved | dismissed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open", server_default="open", index=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_note: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+def _new_verification_id() -> str:
+    return f"evf_{uuid.uuid4().hex[:16]}"
+
+
+class EmailVerification(Base):
+    """One-time email-verification tokens (hashed at rest)."""
+
+    __tablename__ = "email_verifications"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_verification_id)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class RevokedToken(Base):
+    """JWT denylist keyed by `jti`. Rows can be pruned once `expires_at` passes."""
+
+    __tablename__ = "revoked_tokens"
+
+    jti: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True, nullable=False)
+    revoked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+def _new_dab_id() -> str:
+    return f"dab_{uuid.uuid4().hex[:12]}"
+
+
+def _new_list_id() -> str:
+    return f"list_{uuid.uuid4().hex[:12]}"
+
+
+def _new_community_id() -> str:
+    return f"cmty_{uuid.uuid4().hex[:12]}"
+
+
+class DabUp(Base):
+    """Directed dab-up edge: requester → target. Mutual pending becomes dabbed_up."""
+
+    __tablename__ = "dab_ups"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_dab_id)
+    requester_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True, nullable=False)
+    target_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")  # pending | dabbed_up
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class EventAttendee(Base):
+    __tablename__ = "event_attendees"
+
+    event_id: Mapped[str] = mapped_column(String(32), ForeignKey("events.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), primary_key=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class PeopleList(Base):
+    __tablename__ = "people_lists"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_list_id)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="✨")
+    member_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
+class Community(Base):
+    __tablename__ = "communities"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_community_id)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    avatar_url: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_by: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), nullable=False)
+    conversation_id: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("conversations.id"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class CommunityMember(Base):
+    __tablename__ = "community_members"
+
+    community_id: Mapped[str] = mapped_column(String(32), ForeignKey("communities.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(10), nullable=False, default="member")  # admin | member
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class UserDeviceToken(Base):
+    """Push notification device token (FCM registration token) — see app/push.py."""
+
+    __tablename__ = "user_device_tokens"
+
+    user_id: Mapped[str] = mapped_column(String(32), ForeignKey("users.id"), primary_key=True)
+    platform: Mapped[str] = mapped_column(String(10), primary_key=True)  # ios | android | web
+    token: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

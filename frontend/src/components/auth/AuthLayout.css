@@ -1,205 +1,317 @@
-/* AuthLayout.css - Responsive card-based auth experience */
+/* ====================================================
+   Zenex Auth Layout – Full-Bleed Mobile Aesthetic
+   Seamless, edge-to-edge canvas with refined hairlines
+   ==================================================== */
 
-.ios-auth-shell {
-  width: 100vw;
-  min-height: 100vh;
+.zenex-auth-shell {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
   min-height: 100dvh;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   background: var(--bg-primary);
-  position: relative;
-  overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  transition: background-color var(--transition-theme) ease;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  padding: 0;
+  /* Completely hide ugly browser scrollbars */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-.ios-bg-gradient-blob {
+.zenex-auth-shell::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Atmospheric cosmic ambient glow - bleeds across the entire screen */
+.zenex-auth-ambient {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(140px);
-  opacity: 0.16;
+  inset: 0;
   pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 90% 45% at 50% -5%, rgba(233, 220, 190, 0.2), transparent 65%),
+    radial-gradient(circle 380px at 10% 25%, rgba(142, 139, 130, 0.08), transparent 70%),
+    radial-gradient(circle 420px at 90% 85%, rgba(233, 220, 190, 0.1), transparent 70%);
+  opacity: 0.95;
+  transition: opacity var(--transition-theme) ease;
+}
+
+[data-theme='dark'] .zenex-auth-ambient {
+  background:
+    radial-gradient(ellipse 95% 50% at 50% -8%, rgba(233, 220, 190, 0.14), transparent 70%),
+    radial-gradient(circle 380px at 12% 28%, rgba(233, 220, 190, 0.03), transparent 65%),
+    radial-gradient(circle 420px at 88% 78%, rgba(233, 220, 190, 0.045), transparent 70%);
+}
+
+/* Fluid responsive frame that blends naturally on ANY mobile device */
+.zenex-auth-frame {
+  position: relative;
   z-index: 1;
-}
-
-.blob-blue {
-  width: 440px;
-  height: 440px;
-  background: var(--accent-primary);
-  top: -15%;
-  left: -5%;
-  opacity: 0.08;
-}
-
-.blob-purple {
-  width: 520px;
-  height: 520px;
-  background: var(--text-secondary);
-  right: -10%;
-  bottom: -10%;
-  opacity: 0.08;
-}
-
-.blob-pink {
-  width: 340px;
-  height: 340px;
-  background: var(--accent-primary);
-  top: 22%;
-  right: 16%;
-  opacity: 0.05;
-}
-
-.ios-auth-container {
-  width: min(100%, 520px);
-  margin: 0 auto;
-  padding: 36px 20px;
-  z-index: 10;
-}
-
-.ios-auth-card {
-  background: var(--bg-card);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border-radius: var(--radius-2xl);
-  box-shadow: var(--shadow-lg);
-  padding: 32px;
+  width: 100%;
+  max-width: 440px;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-}
-
-.ios-auth-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  padding: calc(46px + env(safe-area-inset-top, 0px)) clamp(18px, 5.5vw, 24px) calc(28px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
   gap: 16px;
+  animation: zenexAuthFrameIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.auth-header-logo-container {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  background: rgba(14, 132, 255, 0.1);
+@keyframes zenexAuthFrameIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Top bar with subtle badge and frosted glass theme button */
+.zenex-auth-topbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 2px;
 }
 
-.auth-header-logo {
-  width: 44px;
-  height: 44px;
-  object-fit: contain;
-}
-
-.auth-logo-label {
-  font-size: 0.95rem;
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 1px;
-  color: var(--accent-purple);
-  margin-bottom: 8px;
-}
-
-.auth-welcome-title {
-  font-size: 2rem;
-  line-height: 1.1;
-  margin: 0;
-}
-
-.auth-welcome-copy {
+.zenex-auth-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   color: var(--text-secondary);
-  margin: 8px 0 0;
-  line-height: 1.8;
 }
 
-.auth-theme-toggle {
-  width: 44px;
-  height: 44px;
-  border-radius: 16px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+[data-theme='light'] .zenex-auth-pill-badge {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.zenex-auth-badge-icon {
+  color: var(--accent-primary);
+}
+
+.zenex-auth-theme-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
   cursor: pointer;
+  transition: transform 0.18s ease, color 0.18s ease, background 0.18s ease;
 }
 
-.auth-tabs {
+[data-theme='light'] .zenex-auth-theme-btn {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.zenex-auth-theme-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.09);
+  transform: scale(1.05);
+}
+
+[data-theme='light'] .zenex-auth-theme-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.zenex-auth-theme-btn:active {
+  transform: scale(0.94);
+}
+
+/* Central Brand Hero */
+.zenex-auth-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2px 0 6px;
+}
+
+.zenex-auth-logo-orbit {
+  position: relative;
+  width: 66px;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.zenex-auth-logo-glow {
+  position: absolute;
+  inset: -6px;
+  border-radius: 24px;
+  background: radial-gradient(circle, rgba(233, 220, 190, 0.4) 0%, transparent 75%);
+  filter: blur(12px);
+  opacity: 0.8;
+  animation: logoGlowPulse 4s ease-in-out infinite alternate;
+}
+
+@keyframes logoGlowPulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.08);
+    opacity: 0.95;
+  }
+}
+
+.zenex-auth-logo-badge {
+  position: relative;
+  z-index: 1;
+  width: 62px;
+  height: 62px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.85), rgba(18, 18, 20, 0.95));
+  border: 1px solid rgba(233, 220, 190, 0.28);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    0 0 20px rgba(233, 220, 190, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  transition: transform 0.25s ease;
+}
+
+[data-theme='light'] .zenex-auth-logo-badge {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.zenex-auth-logo-badge:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.zenex-auth-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.zenex-auth-brand-name {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.zenex-auth-brand-tagline {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin: 4px 0 0;
+}
+
+/* Pill Segmented Switcher (Sign In / Sign Up) */
+.zenex-auth-pill-tabs {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  align-items: center;
-  background: var(--bg-secondary);
-  border-radius: 16px;
-  padding: 4px;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 2px 0 4px;
 }
 
-.ios-segmented-indicator {
+[data-theme='light'] .zenex-auth-pill-tabs {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.zenex-auth-pill-slider {
   position: absolute;
-  inset: 4px auto 4px 4px;
-  width: calc(50% - 8px);
-  background: var(--bg-primary);
-  border-radius: 12px;
-  transition: transform 250ms ease;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(233, 220, 190, 0.22);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  pointer-events: none;
 }
 
-.ios-segmented-indicator.left {
-  transform: translateX(0);
+[data-theme='light'] .zenex-auth-pill-slider {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-.ios-segmented-indicator.right {
+.zenex-auth-pill-slider.is-signup {
   transform: translateX(100%);
 }
 
-.ios-segmented-btn {
-  background: transparent;
-  border: none;
-  font-family: inherit;
-  font-weight: 700;
-  font-size: var(--font-sm);
-  color: var(--text-secondary);
-  padding: 14px 0;
-  cursor: pointer;
-  border-radius: 12px;
+.zenex-auth-pill-tab {
+  position: relative;
   z-index: 1;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 9px 0;
+  cursor: pointer;
+  transition: color 0.18s ease;
+  border-radius: 999px;
 }
 
-.ios-segmented-btn.active {
+.zenex-auth-pill-tab.active {
   color: var(--text-primary);
 }
 
-.ios-auth-card-body-wrapper {
+/* Seamless Blended Form Panel (no harsh card boundaries) */
+.zenex-auth-body {
+  position: relative;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 18px;
 }
 
-@media (max-width: 767px) {
-  .ios-auth-container {
-    padding: 20px;
-  }
-
-  .ios-auth-card {
-    padding: 24px;
-  }
-
-  .ios-auth-card-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+/* Footer note */
+.zenex-auth-footer {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+  padding: 4px 0 2px;
 }
-
-@media (min-width: 768px) {
-  .ios-auth-shell {
-    padding: 40px 0;
-  }
-
-  .ios-auth-card {
-    padding: 36px;
-  }
-}
-
-

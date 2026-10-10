@@ -34,6 +34,8 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
         onChange={onChange}
         placeholder={placeholder}
         className="ios-input-field password-field"
+        autoComplete="current-password"
+        spellCheck={false}
       />
       <button
         type="button"

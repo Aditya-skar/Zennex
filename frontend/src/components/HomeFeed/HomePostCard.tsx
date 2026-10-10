@@ -30,9 +30,14 @@ import {
   recordInteraction,
 } from './feedAlgorithm';
 import PostCountdown from './PostCountdown';
-import { isJoined as checkJoined, toggleJoin, deletePublishedPost, isUserCreatedPost } from './publishContent';
+import {
+  isJoined as checkJoined,
+  toggleJoinAsync,
+  deletePublishedPost,
+  isUserCreatedPost,
+} from './publishContent';
 import { isBackendEnabled } from '../../api/client';
-import { toggleLike as toggleLikeRemote } from '../../api/postsApi';
+import { createPost, toggleLike as toggleLikeRemote } from '../../api/postsApi';
 import ConfirmDialog from '../common/ConfirmDialog';
 import { getEventCategoryIconClassName, getEventCategoryIconSrc } from '../ExplorePage/eventMapIcons';
 import { ensureEventChat, removeEventChat, deleteEventTranscript } from '../common/eventChats';
@@ -240,7 +245,26 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
   const handleRepost = () => {
     setReposted((v) => {
       const next = !v;
-      if (next) recordInteraction(post, 'repost');
+      if (next) {
+        recordInteraction(post, 'repost');
+        if (isBackendEnabled()) {
+          void createPost({
+            eventId: post.eventId,
+            type: post.type,
+            caption: post.caption,
+            image: post.image,
+            videoUrl: post.videoUrl,
+            visibility: post.visibility,
+            isReshared: true,
+            originalHostId: post.authorId,
+            registrationType: post.registrationType,
+            slotsTotal: post.slotsTotal,
+            registrationDeadline: post.registrationDeadlineISO ?? undefined,
+          }).catch(() => {
+            setReposted(false);
+          });
+        }
+      }
       return next;
     });
   };
@@ -254,30 +278,32 @@ export const HomePostCard: React.FC<HomePostCardProps> = ({
   const handleJoin = () => {
     // Leaving needs no confirmation; joining asks the user to confirm first.
     if (joined) {
-      const now = toggleJoin(post.eventId);
-      setJoined(now);
-      if (!now) removeEventChat(post.eventId);
+      void toggleJoinAsync(post.eventId).then((now) => {
+        setJoined(now);
+        if (!now) removeEventChat(post.eventId);
+      });
       return;
     }
     setConfirmJoinOpen(true);
   };
 
   const confirmJoin = () => {
-    const now = toggleJoin(post.eventId);
-    setJoined(now);
-    if (now) {
-      recordInteraction(post, 'join');
-      ensureEventChat({
-        eventId: post.eventId,
-        title: post.eventTitle,
-        category: post.category,
-        avatar: author.avatar,
-        hostName: author.name,
-        hostId: post.authorId,
-      });
-      if ('vibrate' in navigator) navigator.vibrate?.(10);
-    }
-    setConfirmJoinOpen(false);
+    void toggleJoinAsync(post.eventId).then((now) => {
+      setJoined(now);
+      if (now) {
+        recordInteraction(post, 'join');
+        ensureEventChat({
+          eventId: post.eventId,
+          title: post.eventTitle,
+          category: post.category,
+          avatar: author.avatar,
+          hostName: author.name,
+          hostId: post.authorId,
+        });
+        if ('vibrate' in navigator) navigator.vibrate?.(10);
+      }
+      setConfirmJoinOpen(false);
+    });
   };
 
   const handleAuthor = () => {

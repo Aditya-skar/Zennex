@@ -3,6 +3,8 @@ import { User, Mail, Phone, Lock, Check, ArrowLeft } from 'lucide-react';
 import PasswordInput from './PasswordInput';
 import SocialLoginButtons from './SocialLoginButtons';
 import { signupAccount } from '../../api';
+import { isBackendEnabled } from '../../api/client';
+import { signInWithGoogle, getGoogleClientId } from '../../api/googleAuth';
 import './SignupPage.css';
 
 interface SignupPageProps {
@@ -101,26 +103,14 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
 
   return (
     <div className="ios-auth-card-body signup-body">
-      <div className="signup-header-actions">
+      <div className="auth-panel-head auth-panel-head--signup">
         <button type="button" className="signup-back-btn" onClick={onBackToLogin} aria-label="Back to Login">
           <ArrowLeft size={16} />
-          <span>Back</span>
         </button>
-        {/* Placeholder to balance flex layout */}
-        <div style={{ width: 60 }}></div>
-      </div>
-
-      {/* Logo Section */}
-      <div className="auth-logo-container">
-        <img src="/logo.png" alt="ZENEX Logo" className="auth-logo" />
-        <h1 className="auth-app-name">ZENEX</h1>
-      </div>
-
-      <div className="ios-welcome-header">
-        <h2 className="ios-welcome-title">Create Your Account 🎉</h2>
-        <p className="ios-welcome-subtitle">
-          Join Zenex and discover sports and entertainment communities
-        </p>
+        <div>
+          <h2 className="auth-panel-title">Create account</h2>
+          <p className="auth-panel-sub">Pick your interests and start exploring</p>
+        </div>
       </div>
 
       {error && (
@@ -199,6 +189,8 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
           <label className="ios-input-label" htmlFor="phone">Phone Number</label>
           <div className="ios-phone-input-container">
             <div className="ios-country-selector">
+              <span className="ios-country-display">{countryCode}</span>
+              <span className="ios-selector-arrow">▼</span>
               <select
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value)}
@@ -210,23 +202,24 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
                 <option value="+971">+971 🇦🇪</option>
                 <option value="+61">+61 🇦🇺</option>
               </select>
-              <span className="ios-selector-arrow">▼</span>
             </div>
             <div className="ios-phone-input-wrapper">
-              <div className="ios-input-icon-left">
-                <Phone size={16} />
+              <div className="ios-input-wrapper">
+                <div className="ios-input-icon-left">
+                  <Phone size={16} />
+                </div>
+                <input
+                  type="tel"
+                  id="phone"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value.replace(/\D/g, ''));
+                    if (error) setError('');
+                  }}
+                  placeholder="Phone Number"
+                  className="ios-input-field"
+                />
               </div>
-              <input
-                type="tel"
-                id="phone"
-                value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value.replace(/\D/g, ''));
-                  if (error) setError('');
-                }}
-                placeholder="Phone Number"
-                className="ios-input-field"
-              />
             </div>
           </div>
         </div>
@@ -363,7 +356,27 @@ export const SignupPage: React.FC<SignupPageProps> = ({ onBackToLogin }) => {
       </div>
 
       {/* Social Options */}
-      <SocialLoginButtons onSelect={(provider) => alert(`Connecting with ${provider}...`)} />
+      <SocialLoginButtons
+        onSelect={(provider) => {
+          if (provider !== 'google') {
+            alert('Use email signup or Google — Apple is native iOS only for now.');
+            return;
+          }
+          if (!isBackendEnabled() || !getGoogleClientId()) {
+            alert('Configure VITE_API_URL and VITE_GOOGLE_CLIENT_ID first.');
+            return;
+          }
+          setIsLoading(true);
+          void signInWithGoogle()
+            .then(() => {
+              window.location.href = '/';
+            })
+            .catch((err) => {
+              setError(err instanceof Error ? err.message : 'Google sign-in failed');
+              setIsLoading(false);
+            });
+        }}
+      />
 
       {/* Footer link to go back to Login */}
       <div className="signup-footer">

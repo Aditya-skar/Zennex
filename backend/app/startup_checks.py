@@ -27,9 +27,10 @@ def validate_settings(settings: Settings) -> None:
         errors.append("JWT_SECRET must be a strong secret (32+ chars), not the dev placeholder.")
     if settings.cors_origins.strip() == "*":
         errors.append("CORS_ORIGINS must list real origins in production (not '*').")
-    if not settings.r2_configured:
+    if not settings.durable_media_configured:
         errors.append(
-            "R2_* env vars must all be set in production (local /uploads disk is not deploy-safe)."
+            "Set Supabase Storage (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) or all R2_* "
+            "vars — local /uploads disk is not deploy-safe."
         )
 
     for msg in errors:
@@ -41,4 +42,19 @@ def validate_settings(settings: Settings) -> None:
             "See backend/DEPLOY_PHASE1.md and backend/.env.production.example."
         )
 
-    logger.info("Production config checks passed (Postgres, JWT, CORS, R2).")
+    # Soft requirements — the app runs without them, but features degrade.
+    if not settings.redis_url.strip():
+        logger.warning(
+            "REDIS_URL not set: rate limits are per-process (fine for ONE instance only)."
+        )
+    if not settings.resend_api_key.strip():
+        logger.warning(
+            "RESEND_API_KEY not set: password-reset and verification emails won't be delivered."
+        )
+    if not settings.fcm_configured:
+        logger.warning("FCM_SERVICE_ACCOUNT_JSON not set: push notifications are disabled.")
+    if not settings.admin_username_list:
+        logger.warning("ADMIN_USERNAMES empty: nobody can use /api/admin until a user has is_admin.")
+
+    media = "R2" if settings.r2_configured else "Supabase Storage"
+    logger.info("Production config checks passed (Postgres, JWT, CORS, %s).", media)

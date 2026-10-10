@@ -12,7 +12,11 @@ function notify(): void {
   window.dispatchEvent(new CustomEvent(PEOPLE_LISTS_CHANGED_EVENT));
 }
 
+import { getPeopleListsCache } from '../../api/peopleListsCache';
+import { isBackendEnabled } from '../../api/client';
+
 export function loadPeopleLists(): PeopleList[] {
+  if (isBackendEnabled()) return getPeopleListsCache();
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
@@ -29,6 +33,13 @@ function saveLists(lists: PeopleList[]): void {
 
 export function getPeopleList(id: string): PeopleList | undefined {
   return loadPeopleLists().find((list) => list.id === id);
+}
+
+/** Load lists from API when backend is on (no-op in mock mode). */
+export async function ensurePeopleListsHydrated(): Promise<void> {
+  if (!isBackendEnabled()) return;
+  const { fetchPeopleLists } = await import('../../api/peopleListsApi');
+  await fetchPeopleLists();
 }
 
 export function createPeopleList(name: string, memberIds: string[] = []): PeopleList {

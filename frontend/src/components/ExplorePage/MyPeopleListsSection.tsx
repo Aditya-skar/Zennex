@@ -10,9 +10,18 @@ import {
   deletePeopleList,
   toggleListMember,
   getPeopleList,
+  ensurePeopleListsHydrated,
   PEOPLE_LISTS_CHANGED_EVENT,
   type PeopleList,
 } from '../HomeFeed/audienceLists';
+import { isBackendEnabled } from '../../api/client';
+import {
+  createPeopleListRemote,
+  deletePeopleListRemote,
+  updatePeopleListRemote,
+} from '../../api/peopleListsApi';
+import { listUsers } from '../../api/usersApi';
+import type { PublicUserDto } from '../../api/types';
 
 const LONG_PRESS_MS = 450;
 
@@ -27,10 +36,20 @@ export const MyPeopleListsSection: React.FC = () => {
   const refresh = useCallback(() => setLists(loadPeopleLists()), []);
 
   useEffect(() => {
+    if (isBackendEnabled()) void ensurePeopleListsHydrated().then(refresh);
+  }, [refresh]);
+
+  useEffect(() => {
     const onChange = () => refresh();
     window.addEventListener(PEOPLE_LISTS_CHANGED_EVENT, onChange);
     return () => window.removeEventListener(PEOPLE_LISTS_CHANGED_EVENT, onChange);
   }, [refresh]);
+
+  const [remotePeople, setRemotePeople] = useState<PublicUserDto[]>([]);
+  useEffect(() => {
+    if (!isBackendEnabled()) return;
+    void listUsers().then(setRemotePeople);
+  }, [lists.length]);
 
   const editingList = editingListId ? lists.find((l) => l.id === editingListId) : null;
 
@@ -38,9 +57,13 @@ export const MyPeopleListsSection: React.FC = () => {
     setEditName(editingList?.name ?? '');
   }, [editingList?.id, editingList?.name]);
 
-  const connectedPeople = [...new Set([...getDabbedUpIds(), ...getFollowing()])]
-    .map((id) => ORGANIZER_BY_ID[id])
-    .filter(Boolean);
+  const connectedPeople = isBackendEnabled()
+    ? remotePeople.filter(
+        (u) => getDabbedUpIds().includes(u.id) || getFollowing().includes(u.id),
+      )
+    : [...new Set([...getDabbedUpIds(), ...getFollowing()])]
+        .map((id) => ORGANIZER_BY_ID[id])
+        .filter(Boolean);
 
   const clearPress = useCallback(() => {
     if (pressTimer.current !== null) {
@@ -67,29 +90,55 @@ export const MyPeopleListsSection: React.FC = () => {
   };
 
   const handleCreateList = () => {
-    const list = createPeopleList('✨');
-    refresh();
-    setEditingListId(list.id);
+    const run = async () => {
+      const list = isBackendEnabled()
+        ? await createPeopleListRemote('✨')
+        : createPeopleList('✨');
+      refresh();
+      setEditingListId(list.id);
+    };
+    void run();
   };
 
   const handleSaveName = (value: string) => {
     setEditName(value);
     if (!editingListId) return;
-    updatePeopleList(editingListId, { name: value });
-    refresh();
+    if (isBackendEnabled()) {
+      void updatePeopleListRemote(editingListId, { name: value }).then(refresh);
+    } else {
+      updatePeopleList(editingListId, { name: value });
+      refresh();
+    }
   };
 
   const handleToggleMember = (memberId: string) => {
     if (!editingListId) return;
-    toggleListMember(editingListId, memberId);
-    refresh();
+    if (isBackendEnabled()) {
+      const list = getPeopleList(editingListId);
+      if (!list) return;
+      const has = list.memberIds.includes(memberId);
+      const memberIds = has
+        ? list.memberIds.filter((mid) => mid !== memberId)
+        : [...list.memberIds, memberId];
+      void updatePeopleListRemote(editingListId, { memberIds }).then(refresh);
+    } else {
+      toggleListMember(editingListId, memberId);
+      refresh();
+    }
   };
 
   const handleDeleteList = () => {
     if (!editingListId) return;
-    deletePeopleList(editingListId);
-    refresh();
-    setEditingListId(null);
+    if (isBackendEnabled()) {
+      void deletePeopleListRemote(editingListId).then(() => {
+        refresh();
+        setEditingListId(null);
+      });
+    } else {
+      deletePeopleList(editingListId);
+      refresh();
+      setEditingListId(null);
+    }
   };
 
   const openEditFromAction = () => {
@@ -193,18 +242,21 @@ export const MyPeopleListsSection: React.FC = () => {
             ) : (
               <div className="people-list-members">
                 {connectedPeople.map((person) => {
-                  const isOn = editingList.memberIds.includes(person.id);
+                  const pid = 'id' in person ? person.id : person.id;
+                  const pname = 'fullName' in person ? person.fullName : person.name;
+                  const pavatar = 'avatarUrl' in person ? person.avatarUrl : person.avatar;
+                  const isOn = editingList.memberIds.includes(pid);
                   return (
                     <button
-                      key={person.id}
+                      key={pid}
                       type="button"
                       className={`people-list-member-row ${isOn ? 'is-on' : ''}`}
-                      onClick={() => handleToggleMember(person.id)}
+                      onClick={() => handleToggleMember(pid)}
                     >
-                      <img src={person.avatar} alt="" className="people-list-member-avatar" />
+                      <img src={pavatar} alt="" className="people-list-member-avatar" />
                       <span className="people-list-member-meta">
-                        <strong>{person.name}</strong>
-                        <small>{person.role}</small>
+                        <strong>{pname}</strong>
+                        {'role' in person && person.role ? <small>{person.role}</small> : null}
                       </span>
                       <span className="people-list-member-check" aria-hidden="true">
                         {isOn && <Check size={14} />}

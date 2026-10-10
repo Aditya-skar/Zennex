@@ -14,6 +14,9 @@ export type UserProfile = {
   avatarUrl: string;
   sports: string[];
   entertainment: string[];
+  /** Own account only (never on public profiles). */
+  email?: string | null;
+  emailVerified?: boolean;
 };
 
 export type AuthSession = {
@@ -230,18 +233,46 @@ export type ConversationPrefsPayload = {
   hidden?: boolean;
 };
 
+export type PeopleListDto = {
+  id: string;
+  name: string;
+  memberIds: string[];
+  updatedAt: number;
+};
+
 /** Canonical REST paths the backend should implement. */
 export const API_ROUTES = {
   health: '/api/health',
   login: '/api/auth/login',
   signup: '/api/auth/signup',
   logout: '/api/auth/logout',
+  logoutAll: '/api/auth/logout-all',
+  sendVerification: '/api/auth/send-verification',
+  verifyEmail: '/api/auth/verify-email',
+  forgotPassword: '/api/auth/forgot-password',
+  resetPassword: '/api/auth/reset-password',
+  changePassword: '/api/auth/change-password',
+  googleAuth: '/api/auth/google',
+  appleAuth: '/api/auth/apple',
   me: '/api/me',
+  meStats: '/api/me/stats',
+  meDeviceToken: '/api/me/device-token',
   updateMe: '/api/me',
   events: '/api/events',
   eventById: (id: string) => `/api/events/${id}`,
+  eventsJoinedMine: '/api/events/joined/mine',
+  eventJoin: (id: string) => `/api/events/${id}/join`,
+  peopleLists: '/api/people-lists',
+  peopleListById: (id: string) => `/api/people-lists/${id}`,
+  communities: '/api/communities',
+  communitiesByCreator: (userId: string) => `/api/communities/by-creator/${userId}`,
+  communityJoin: (id: string) => `/api/communities/${id}/join`,
+  reports: '/api/reports',
+  blockUser: (userId: string) => `/api/blocks/${userId}`,
   dabUps: '/api/dab-ups',
+  dabUpsMine: '/api/dab-ups/mine',
   dabUpRequest: '/api/dab-ups/request',
+  eventConversation: (id: string) => `/api/events/${id}/conversation`,
   userPublic: (userId: string) => `/api/users/${userId}/public`,
   users: '/api/users',
   conversations: '/api/conversations',

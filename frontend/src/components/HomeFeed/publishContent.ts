@@ -17,6 +17,7 @@ import {
 import { ensureEventChat } from '../common/eventChats';
 import { isBackendEnabled } from '../../api/client';
 import { createEventRemote, deleteEventRemote } from '../../api/eventsApi';
+import { isEventJoined, toggleEventJoinRemote } from '../../api/joinsApi';
 import { createPost, deletePost } from '../../api/postsApi';
 import type { EventDto, PostCreatePayload } from '../../api/types';
 import { mapPostDtoToHomeFeedPost } from './homeFeed';
@@ -96,17 +97,24 @@ function getJoined(): string[] {
   }
 }
 
-export function isJoined(postId: string): boolean {
-  return getJoined().includes(postId);
+export function isJoined(eventId: string): boolean {
+  if (isBackendEnabled()) return isEventJoined(eventId);
+  return getJoined().includes(eventId);
 }
 
 /** Join / leave an event; returns the new joined state. */
-export function toggleJoin(postId: string): boolean {
+export function toggleJoin(eventId: string): boolean {
   const joined = getJoined();
-  const has = joined.includes(postId);
-  const next = has ? joined.filter((id) => id !== postId) : [...joined, postId];
+  const has = joined.includes(eventId);
+  const next = has ? joined.filter((id) => id !== eventId) : [...joined, eventId];
   localStorage.setItem(JOINED_KEY, JSON.stringify(next));
   return !has;
+}
+
+/** Async join/leave when the live API is enabled. */
+export async function toggleJoinAsync(eventId: string): Promise<boolean> {
+  if (isBackendEnabled()) return toggleEventJoinRemote(eventId);
+  return toggleJoin(eventId);
 }
 
 /* ---------- Date helpers ---------- */

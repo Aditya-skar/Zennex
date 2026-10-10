@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './themeContext';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
@@ -7,6 +7,20 @@ import AuthLayout from './components/auth/AuthLayout';
 import MobileAppFrame from './components/MobileAppFrame/MobileAppFrame';
 import { AUTH_CHANGED_EVENT, isLoggedIn, restoreRealtimeAuthOnBoot } from './api';
 import './App.css';
+
+/** Routes a tapped push notification (see lib/pushNotifications.ts). */
+const PushNavigationBridge: React.FC = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const onNavigate = (e: Event) => {
+      const route = (e as CustomEvent<string>).detail;
+      if (route) navigate(route);
+    };
+    window.addEventListener('simsor-push-navigate', onNavigate);
+    return () => window.removeEventListener('simsor-push-navigate', onNavigate);
+  }, [navigate]);
+  return null;
+};
 
 export const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isLoggedIn());
@@ -45,6 +59,7 @@ export const App: React.FC = () => {
           }} 
         />
         <BrowserRouter>
+          <PushNavigationBridge />
           <Routes>
             <Route 
               path="/login" 

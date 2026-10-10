@@ -3,7 +3,12 @@
  */
 import { apiPost, getAuthToken, isBackendEnabled, setAuthToken } from './client';
 import { API_ROUTES, type AuthSession, type UserProfile } from './types';
+import { hydrateJoinedEvents } from './joinsApi';
+import { hydrateDabUps } from './dabUpsApi';
+import { hydrateCommunities } from './communitiesApi';
+import { ensurePeopleListsHydrated } from '../components/HomeFeed/audienceLists';
 import { syncRealtimeAuth } from '../lib/supabaseClient';
+import { registerForPush, unregisterPush } from '../lib/pushNotifications';
 
 export const AUTH_FLAG_KEY = 'zenex-auth';
 export const AUTH_CHANGED_EVENT = 'simsor-auth-changed';
@@ -72,6 +77,17 @@ function applyLiveSession(session: AuthSession) {
   setAuthToken(session.token);
   syncRealtimeAuth(session.token);
   persistLocalSession(session.user);
+  void hydrateJoinedEvents();
+  void hydrateDabUps();
+  void hydrateCommunities();
+  void ensurePeopleListsHydrated();
+  void registerForPush();
+}
+
+/** Apply a live API session (password, Google, Apple, signup). */
+export function applyAuthSession(session: AuthSession): UserProfile {
+  applyLiveSession(session);
+  return session.user;
 }
 
 /** Re-bridges an already-stored token into Supabase Realtime on app boot,
@@ -80,7 +96,14 @@ function applyLiveSession(session: AuthSession) {
 export function restoreRealtimeAuthOnBoot(): void {
   if (!isBackendEnabled()) return;
   const token = getAuthToken();
-  if (token) syncRealtimeAuth(token);
+  if (token) {
+    syncRealtimeAuth(token);
+    void hydrateJoinedEvents();
+    void hydrateDabUps();
+    void hydrateCommunities();
+    void ensurePeopleListsHydrated();
+    void registerForPush();
+  }
 }
 
 export async function loginWithPassword(username: string, password: string): Promise<UserProfile> {
@@ -134,16 +157,30 @@ export async function signupAccount(payload: {
   return getLocalProfile();
 }
 
+/** Drops the local session without calling the API (token already revoked/expired). */
+export function clearLocalSession(): void {
+  setAuthToken(null);
+  syncRealtimeAuth(null);
+  localStorage.removeItem(AUTH_FLAG_KEY);
+  emitAuthChanged();
+}
+
 export async function logout(): Promise<void> {
   if (isBackendEnabled()) {
+    // Stop pushes to this device while the token is still valid.
+    await unregisterPush();
     try {
+      // Revokes this token server-side.
       await apiPost(API_ROUTES.logout);
     } catch {
       /* ignore network errors on logout */
     }
   }
-  setAuthToken(null);
-  syncRealtimeAuth(null);
-  localStorage.removeItem(AUTH_FLAG_KEY);
-  emitAuthChanged();
+  clearLocalSession();
+}
+
+/** Replaces the stored token (e.g. after change-password signs other devices out). */
+export function replaceAuthToken(token: string): void {
+  setAuthToken(token);
+  syncRealtimeAuth(token);
 }

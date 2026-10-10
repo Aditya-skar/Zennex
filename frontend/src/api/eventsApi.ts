@@ -41,3 +41,12 @@ export async function deleteEventRemote(eventId: string): Promise<void> {
   }
   throw new Error('Use removeExploreEvent() while backend is offline');
 }
+
+export async function getEventRemote(eventId: string): Promise<EventDto> {
+  if (isBackendEnabled()) {
+    return apiGet<EventDto>(API_ROUTES.eventById(eventId));
+  }
+  const match = loadExploreEvents().find((e) => e.id === eventId);
+  if (!match) throw new Error('Event not found');
+  return toDto(match);
+}

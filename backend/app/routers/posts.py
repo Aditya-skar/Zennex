@@ -21,12 +21,16 @@ async def list_posts(
     db: DbSession,
     current_user: OptionalCurrentUser,
     mainCategory: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
 ) -> list[PostDto]:
     query = select(Post, Event).join(Event, Post.event_id == Event.id)
     if mainCategory:
         query = query.where(Event.main_category == mainCategory)
 
-    result = await db.execute(query.order_by(Post.created_at.desc()))
+    result = await db.execute(
+        query.order_by(Post.created_at.desc()).limit(limit).offset(offset)
+    )
     rows = result.all()
 
     post_ids = [post.id for post, _ in rows]
@@ -75,6 +79,24 @@ async def create_post(body: PostCreate, current_user: CurrentUser, db: DbSession
     await db.commit()
     await db.refresh(post)
     return _to_dto(post, event, likes=0, liked_by_me=False)
+
+
+@router.get("/{post_id}", response_model=PostDto)
+async def get_post(
+    post_id: str, db: DbSession, current_user: OptionalCurrentUser
+) -> PostDto:
+    result = await db.execute(
+        select(Post, Event).join(Event, Post.event_id == Event.id).where(Post.id == post_id)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Post not found")
+    post, event = row
+    likes = (await _likes_count_map(db, [post.id])).get(post.id, 0)
+    liked = False
+    if current_user:
+        liked = post.id in await _liked_post_ids(db, current_user.id, [post.id])
+    return _to_dto(post, event, likes, liked)
 
 
 @router.delete("/{post_id}")

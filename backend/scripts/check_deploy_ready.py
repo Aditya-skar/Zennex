@@ -74,10 +74,32 @@ def main() -> int:
 
     if settings.r2_configured:
         pass_("R2 media storage is configured.")
+    elif settings.supabase_storage_configured:
+        pass_("Supabase Storage is configured.")
     elif prod:
-        fail("R2_* vars not all set — required for production uploads.")
+        fail("Need Supabase Storage (SUPABASE_URL + SERVICE_ROLE) or all R2_* vars.")
     else:
-        warn("R2 not set — using local disk /uploads (dev only).")
+        warn("No durable media — using local disk /uploads (dev only).")
+
+    if settings.redis_url.strip():
+        pass_("REDIS_URL set — rate limits are shared across instances.")
+    else:
+        warn("REDIS_URL not set — rate limits are per-process (OK for a single instance).")
+
+    if settings.resend_api_key.strip():
+        pass_("RESEND_API_KEY set — reset/verification emails will be delivered.")
+    else:
+        warn("RESEND_API_KEY not set — emails are only logged (no password reset in prod).")
+
+    if settings.fcm_configured:
+        pass_("FCM configured — push notifications enabled.")
+    else:
+        warn("FCM_SERVICE_ACCOUNT_JSON not set — push notifications disabled.")
+
+    if settings.admin_username_list:
+        pass_("ADMIN_USERNAMES set — moderation endpoints usable.")
+    else:
+        warn("ADMIN_USERNAMES empty — set it (or users.is_admin) to use /api/admin.")
 
     print()
     if prod and ok:

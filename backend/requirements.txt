@@ -17,3 +17,9 @@ python-multipart>=0.0.9    # file uploads (avatars, event images) — used in Ph
 
 # Media storage (Phase 3, Cloudflare R2 is S3-compatible — see app/storage.py)
 boto3>=1.35.0
+
+# Social login (optional — only used when GOOGLE_CLIENT_ID is set)
+google-auth>=2.36.0
+
+# Shared rate limiting across instances (optional — only used when REDIS_URL is set)
+redis>=5.0.0

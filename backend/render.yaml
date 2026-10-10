@@ -1,0 +1,51 @@
+# Render Blueprint — Deploy Phase 1
+# https://dashboard.render.com → New → Blueprint → connect this repo
+#
+# Set these secret env vars in the Render dashboard (not in git):
+#   DATABASE_URL, JWT_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# Optional: CORS_ORIGINS, R2_* instead of Supabase Storage
+# Recommended: RESEND_API_KEY (emails), ADMIN_USERNAMES (moderation),
+#   FCM_SERVICE_ACCOUNT_JSON (push), REDIS_URL (needed for >1 instance)
+
+services:
+  - type: web
+    name: simsor-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXPIRE_MINUTES
+        value: "43200"
+      - key: SUPABASE_STORAGE_BUCKET
+        value: media
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: APPLE_CLIENT_ID
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ADMIN_USERNAMES
+        sync: false
+      - key: FCM_SERVICE_ACCOUNT_JSON
+        sync: false

@@ -23,6 +23,8 @@ import { loadUserPosts } from '../HomeFeed/publishContent';
 import { getFollowing } from '../HomeFeed/feedAlgorithm';
 import { getRankForXp, type RankProgress } from './rankConfig';
 import { MAX_PROFILE_TAGS, TAG_BY_ID } from './tagsConfig';
+import { isBackendEnabled } from '../../api/client';
+import { getServerDabbedUpIds } from '../../api/dabUpsApi';
 
 /* ============================================================
    1. DAB UPS (mutual connections)
@@ -86,6 +88,7 @@ export function removeDabUp(userId: string): void {
 }
 
 export function getDabbedUpIds(): string[] {
+  if (isBackendEnabled()) return getServerDabbedUpIds();
   const store = loadDabStore();
   return Object.keys(store).filter((id) => store[id] !== 'pending');
 }

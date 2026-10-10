@@ -5,8 +5,10 @@ Ports the client's `zenex-following-v1` localStorage store
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
+from app.blocks import is_blocked_between
 from app.deps import CurrentUser, DbSession
 from app.models import Follow, User
+from app.push import notify_users
 from app.schemas import FollowingList
 
 router = APIRouter(prefix="/api/follows", tags=["follows"])
@@ -26,6 +28,8 @@ async def follow_user(user_id: str, current_user: CurrentUser, db: DbSession) ->
     target = await db.execute(select(User).where(User.id == user_id))
     if target.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if await is_blocked_between(db, current_user.id, user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can't follow this user")
 
     existing = await db.execute(
         select(Follow).where(Follow.follower_id == current_user.id, Follow.followee_id == user_id)
@@ -33,6 +37,13 @@ async def follow_user(user_id: str, current_user: CurrentUser, db: DbSession) ->
     if existing.scalar_one_or_none() is None:
         db.add(Follow(follower_id=current_user.id, followee_id=user_id))
         await db.commit()
+        await notify_users(
+            db,
+            [user_id],
+            title="New follower",
+            body=f"{current_user.full_name or current_user.username} started following you",
+            data={"type": "follow", "userId": current_user.id},
+        )
 
     return {"ok": True, "following": True}
 

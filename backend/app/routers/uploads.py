@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from app.deps import CurrentUser
 from app.schemas import UploadResponse
-from app.storage import UnsupportedMediaType, UploadTooLarge, save_upload
+from app.storage import StorageUploadError, UnsupportedMediaType, UploadTooLarge, save_upload
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -26,6 +26,10 @@ async def upload_file(file: UploadFile, current_user: CurrentUser) -> UploadResp
     except UploadTooLarge as exc:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)
+        ) from exc
+    except StorageUploadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)
         ) from exc
 
     return UploadResponse(url=url, type=kind)  # type: ignore[arg-type]
